@@ -1,0 +1,28 @@
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Safe-area helpers for iPhone notch / home bar ── */
+@layer utilities {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ── Hide scrollbar while keeping scroll behaviour ── */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ── Smooth momentum scrolling on iOS ── */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}

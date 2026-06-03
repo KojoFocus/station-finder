@@ -1,0 +1,21 @@
+{
+  "name": "Station Finder",
+  "short_name": "StationFinder",
+  "description": "Conversational trotro guide for Accra",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1a0b",
+  "theme_color": "#0d1a0b",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
