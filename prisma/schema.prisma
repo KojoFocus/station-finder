@@ -43,6 +43,29 @@ model Route {
   createdAt DateTime @default(now())
 }
 
+// Crowdsourced stop submissions from commuters via /map-it
+model CrowdsourcedStop {
+  id            String   @id @default(uuid())
+  stopName      String   // e.g. "Teiman Borga Town"
+  latitude      Float
+  longitude     Float
+  routeHeading  String   // raw routes text, e.g. "Madina – 1.50 GHS, Circle – 3 GHS"
+  estimatedFare Float    // first fare parsed from routeHeading, 0 if not found
+  submitterId   String   // anonymous device ID for spam prevention
+  votes         Int      @default(1)
+  status        String   @default("PENDING") // PENDING | VERIFIED | FLAGGED
+  createdAt     DateTime @default(now())
+}
+
+// User-submitted route quality reports (submitted from chat UI)
+model Report {
+  id           String   @id @default(uuid())
+  destination  String
+  routeSummary String
+  reason       String
+  createdAt    DateTime @default(now())
+}
+
 // Phase 3 model — defined now so the schema is complete, not used in Phase 1
 model PartnerDriver {
   id             String   @id @default(uuid())

@@ -3,6 +3,69 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   STATION FINDER — DESIGN TOKEN SYSTEM
+   Brand Color Economy: 60% neutral canvas · 30% typography · 10% accent
+
+   All raw hex values live here.
+   Tailwind classes reference these via var(--token).
+   To theme or white-label: change values here only — UI updates everywhere.
+───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+
+  /* ── 60% NEUTRAL CANVAS ──────────────────────────────────────────────────
+     Pure near-blacks. No green tint. Depth through luminance steps only.
+     Each step is ~6–9 lightness points above the previous.              */
+
+  --bg-canvas:          #0d0d0d;   /* Root app background                 */
+  --bg-raised:          #141414;   /* Bottom sheet / panel background     */
+  --surface-card:       #1c1c1c;   /* Cards, input fields, modals         */
+  --surface-elevated:   #252525;   /* Hover state on cards                */
+  --surface-interactive:#2a2a2a;   /* Pressed / active card state         */
+
+  /* ── STRUCTURAL BORDERS ──────────────────────────────────────────────── */
+
+  --stroke-subtle:      #1f1f1f;   /* Barely-there dividers               */
+  --stroke-default:     #2a2a2a;   /* Standard card/input borders         */
+  --stroke-emphasis:    #333333;   /* Stronger separator, focus rings     */
+
+  /* ── 30% CONTENT & TYPOGRAPHY ───────────────────────────────────────────
+     Neutral-warm text. No green tint. Strict 4-level hierarchy.         */
+
+  --text-primary:       #ededed;   /* Headings, body, primary labels      */
+  --text-secondary:     #888888;   /* Sub-labels, metadata, captions      */
+  --text-muted:         #555555;   /* Timestamps, helper text             */
+  --text-disabled:      #3a3a3a;   /* Disabled controls, ghost text       */
+  --text-placeholder:   #444444;   /* Input placeholders                  */
+
+  /* ── 10% BRAND ACCENT ────────────────────────────────────────────────────
+     #4a7c59 fires ONLY on: primary buttons, active tabs/nav,
+     focused input borders, progress indicators, verification dots.
+     Everything else uses neutrals above.                                */
+
+  --accent-interactive: #4a7c59;                    /* Primary brand green       */
+  --accent-pressed:     #3d6649;                    /* Darker on tap/press       */
+  --accent-subtle:      rgba(74, 124, 89, 0.12);    /* Ghost fill (checkboxes,   */
+                                                    /* selected row bg, etc.)    */
+  --accent-glow:        rgba(74, 124, 89, 0.28);    /* Box-shadow / focus ring   */
+
+  /* ── GAMIFICATION ACCENT (separate from brand — reward signal only) ────── */
+
+  --reward:             #f59e0b;                    /* Points, rank names        */
+  --reward-subtle:      rgba(245, 158, 11, 0.12);   /* Ghost reward backgrounds  */
+
+  /* ── SEMANTIC STATUS (admin badges — not brand, not reward) ────────────── */
+
+  --status-verified:    #4ade80;   /* VERIFIED badge text                 */
+  --status-pending:     #f59e0b;   /* PENDING badge text (= reward amber) */
+  --status-danger:      #f87171;   /* FLAGGED / error text                */
+
+  --status-verified-bg: rgba(74, 222, 128, 0.08);
+  --status-pending-bg:  rgba(245, 158, 11, 0.08);
+  --status-danger-bg:   rgba(248, 113, 113, 0.08);
+}
+
 /* ── Safe-area helpers for iPhone notch / home bar ── */
 @layer utilities {
   .pt-safe {
