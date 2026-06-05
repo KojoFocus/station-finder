@@ -10,11 +10,17 @@ export interface RouteMapProps {
   followUser?: boolean;
 }
 
-const TOKEN    = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+const TOKEN   = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 const DEFAULT: [number, number] = [-0.15, 5.69]; // Accra [lng, lat]
 
-// Animated dashed-line offset for the walking route
-let dashOffset = 0;
+function calcBearing(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const y = Math.sin(dLng) * Math.cos((b.lat * Math.PI) / 180);
+  const x =
+    Math.cos((a.lat * Math.PI) / 180) * Math.sin((b.lat * Math.PI) / 180) -
+    Math.sin((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
 
 export default function RouteMap({
   userLocation, boardingStop, destCoords, walkingGeoJSON, followUser = false,
@@ -23,14 +29,18 @@ export default function RouteMap({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef         = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const markersRef     = useRef<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userMarkerRef  = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const routeMarkersRef = useRef<any[]>([]);
   const animFrameRef   = useRef<number | null>(null);
+  const dashOffsetRef  = useRef(0);
   const initializedRef = useRef(false);
   const mapReadyRef    = useRef(false);
+  const prevLocRef     = useRef<{ lat: number; lng: number } | null>(null);
+  const bearingRef     = useRef(0);
+  const hasRouteRef    = useRef(false);
 
-  // ── Init map ────────────────────────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (initializedRef.current || !containerRef.current || !TOKEN) return;
     initializedRef.current = true;
@@ -46,8 +56,9 @@ export default function RouteMap({
         style:     "mapbox://styles/mapbox/navigation-night-v1",
         center:    DEFAULT,
         zoom:      13,
+        pitch:     0,
+        bearing:   0,
         attributionControl: false,
-        pitchWithRotate: false,
       });
 
       map.addControl(
@@ -58,28 +69,96 @@ export default function RouteMap({
       map.on("load", () => {
         mapReadyRef.current = true;
 
-        // Walking route source + layers (dashed green line)
-        map.addSource("walking", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        map.addLayer({
-          id: "walking-bg",
-          type: "line", source: "walking",
-          paint: { "line-color": "#4a7c59", "line-width": 5, "line-opacity": 0.25 },
+        // ── Trotro stops layer ──────────────────────────────────────────────
+        map.addSource("stops", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
         });
         map.addLayer({
-          id: "walking-dash",
-          type: "line", source: "walking",
+          id: "stops-halo", type: "circle", source: "stops",
           paint: {
-            "line-color": "#4a7c59", "line-width": 5,
-            "line-dasharray": [0, 4, 3], "line-opacity": 0.95,
+            "circle-radius": 11,
+            "circle-color": "#4a7c59",
+            "circle-opacity": 0.18,
+            "circle-blur": 1,
+          },
+        });
+        map.addLayer({
+          id: "stops-dot", type: "circle", source: "stops",
+          paint: {
+            "circle-radius": 5,
+            "circle-color": "#6aff9a",
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.85,
           },
         });
 
-        // Animate the dash offset for a "marching ants" walking effect
+        // Tap a stop — show its name + routes
+        map.on("click", "stops-dot", (e: any) => {
+          if (!e.features?.length) return;
+          const f = e.features[0];
+          const { stopName, routeHeading } = f.properties;
+          new mapboxgl.Popup({ offset: 12 })
+            .setLngLat(e.lngLat)
+            .setHTML(`<b>${stopName}</b>${routeHeading && routeHeading !== "Not specified" ? `<br><span style="opacity:.7;font-size:11px">${routeHeading}</span>` : ""}`)
+            .addTo(map);
+        });
+        map.on("mouseenter", "stops-dot", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "stops-dot", () => { map.getCanvas().style.cursor = ""; });
+
+        // Load stops from API
+        fetch("/api/stops")
+          .then((r) => r.json())
+          .then((gj) => { if (map.getSource("stops")) (map.getSource("stops") as any).setData(gj); })
+          .catch(() => {});
+
+        // ── Walking route layers (glow stack) ───────────────────────────────
+        map.addSource("walking", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+
+        // Outer glow
+        map.addLayer({
+          id: "walking-glow-outer", type: "line", source: "walking",
+          paint: { "line-color": "#4a7c59", "line-width": 18, "line-opacity": 0.10, "line-blur": 12 },
+        });
+        // Mid glow
+        map.addLayer({
+          id: "walking-glow-mid", type: "line", source: "walking",
+          paint: { "line-color": "#4a7c59", "line-width": 10, "line-opacity": 0.22, "line-blur": 5 },
+        });
+        // Core bright line
+        map.addLayer({
+          id: "walking-core", type: "line", source: "walking",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#6aff9a", "line-width": 4, "line-opacity": 0.95 },
+        });
+        // Animated white dashes on top
+        map.addLayer({
+          id: "walking-dash", type: "line", source: "walking",
+          layout: { "line-cap": "butt" },
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": 3,
+            "line-dasharray": [0, 4, 3],
+            "line-opacity": 0.55,
+          },
+        });
+
+        // Animate dashes
         const animateDash = () => {
-          dashOffset = (dashOffset - 0.5) % 512;
+          dashOffsetRef.current -= 0.45;
+          const t = dashOffsetRef.current;
+          const step = (((-t) % 7) + 7) % 7;
           if (map.getLayer("walking-dash")) {
-            map.setPaintProperty("walking-dash", "line-dasharray", [0, 4, 3]);
-            map.setPaintProperty("walking-dash", "line-offset", dashOffset * 0.04);
+            try {
+              const phase = step / 7;
+              map.setPaintProperty("walking-dash", "line-dasharray",
+                phase < 0.43 ? [phase * 7, 4 - phase * 7 * 0.6, 3] : [0, 4, 3]
+              );
+            } catch { /* layer not ready */ }
           }
           animFrameRef.current = requestAnimationFrame(animateDash);
         };
@@ -92,7 +171,7 @@ export default function RouteMap({
     return () => {
       aborted = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      markersRef.current.forEach((m) => m.remove());
+      routeMarkersRef.current.forEach((m) => m.remove());
       userMarkerRef.current?.remove();
       mapRef.current?.remove();
       mapRef.current = null;
@@ -102,29 +181,49 @@ export default function RouteMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── User location dot ───────────────────────────────────────────────────────
+  // ── User location + smooth follow with heading ────────────────────────────
   useEffect(() => {
     if (!userLocation) return;
     const run = () => {
       if (!mapRef.current) return;
       import("mapbox-gl").then((mod) => {
         const mapboxgl = mod.default;
-        userMarkerRef.current?.remove();
 
+        // Update bearing from movement
+        if (prevLocRef.current) {
+          const dist = Math.hypot(
+            userLocation.lat - prevLocRef.current.lat,
+            userLocation.lng - prevLocRef.current.lng
+          );
+          if (dist > 0.00005) {
+            const raw = calcBearing(prevLocRef.current, userLocation);
+            // Smooth exponential average
+            bearingRef.current = bearingRef.current * 0.7 + raw * 0.3;
+          }
+        }
+        prevLocRef.current = userLocation;
+
+        // Update pulsing dot
+        userMarkerRef.current?.remove();
         const el = document.createElement("div");
-        el.style.cssText = `
-          position:relative;width:22px;height:22px;
-        `;
+        el.style.cssText = "position:relative;width:22px;height:22px;";
         el.innerHTML = `
-          <div style="position:absolute;inset:0;border-radius:50%;background:#4a7c59;opacity:.3;animation:sfping 1.8s ease-out infinite"></div>
-          <div style="position:absolute;top:4px;left:4px;width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,.6)"></div>
-        `;
+          <div style="position:absolute;inset:0;border-radius:50%;background:#4a7c59;opacity:.28;animation:sfping 1.8s ease-out infinite"></div>
+          <div style="position:absolute;top:4px;left:4px;width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2.5px solid white;box-shadow:0 2px 10px rgba(0,0,0,.6)"></div>`;
         userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat([userLocation.lng, userLocation.lat])
           .addTo(mapRef.current);
 
+        // Smooth camera follow during navigation
         if (followUser) {
-          mapRef.current.easeTo({ center: [userLocation.lng, userLocation.lat], duration: 600 });
+          mapRef.current.easeTo({
+            center:  [userLocation.lng, userLocation.lat],
+            pitch:   52,
+            bearing: bearingRef.current,
+            zoom:    16.5,
+            duration: 700,
+            easing: (t: number) => 1 - Math.pow(1 - t, 3),
+          });
         }
       });
     };
@@ -132,7 +231,7 @@ export default function RouteMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation?.lat, userLocation?.lng, followUser]);
 
-  // ── Route markers + walking path ────────────────────────────────────────────
+  // ── Route layers + pitch ──────────────────────────────────────────────────
   useEffect(() => {
     const run = () => {
       if (!mapRef.current || !mapReadyRef.current) return;
@@ -140,80 +239,84 @@ export default function RouteMap({
         const mapboxgl = mod.default;
 
         // Clear old route markers
-        markersRef.current.forEach((m) => m.remove());
-        markersRef.current = [];
-
-        const bounds: [[number, number], [number, number]] = [
-          [999, 999], [-999, -999],
-        ];
-        const expand = (lng: number, lat: number) => {
-          bounds[0][0] = Math.min(bounds[0][0], lng);
-          bounds[0][1] = Math.min(bounds[0][1], lat);
-          bounds[1][0] = Math.max(bounds[1][0], lng);
-          bounds[1][1] = Math.max(bounds[1][1], lat);
-        };
+        routeMarkersRef.current.forEach((m) => m.remove());
+        routeMarkersRef.current = [];
 
         // Update walking GeoJSON
-        const src = mapRef.current.getSource("walking");
+        const src = mapRef.current.getSource("walking") as any;
         if (src) {
           src.setData(
-            walkingGeoJSON
-              ? (walkingGeoJSON as object)
-              : { type: "FeatureCollection", features: [] }
+            walkingGeoJSON ?? { type: "FeatureCollection", features: [] }
           );
         }
 
-        // Boarding stop marker
+        const hasRoute = !!(boardingStop || destCoords);
+        hasRouteRef.current = hasRoute;
+
+        const lngs: number[] = [];
+        const lats: number[] = [];
+
         if (boardingStop) {
           const el = document.createElement("div");
           el.innerHTML = `
             <div style="
               background:#4a7c59;color:white;
-              width:40px;height:40px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-              border:2.5px solid white;box-shadow:0 4px 14px rgba(0,0,0,.5);
-              display:flex;align-items:center;justify-content:center;font-size:18px;
-              cursor:pointer;transition:transform .15s;
-            ">
+              width:42px;height:42px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+              border:2.5px solid white;box-shadow:0 4px 16px rgba(74,124,89,.55),0 2px 6px rgba(0,0,0,.5);
+              display:flex;align-items:center;justify-content:center;font-size:19px;">
               <span style="transform:rotate(45deg)">🚐</span>
             </div>`;
           const m = new mapboxgl.Marker({ element: el, anchor: "bottom-left" })
             .setLngLat([boardingStop.lng, boardingStop.lat])
-            .setPopup(new mapboxgl.Popup({ offset: 30 }).setHTML(`<b>${boardingStop.name}</b><br>Board here`))
+            .setPopup(new mapboxgl.Popup({ offset: 30 })
+              .setHTML(`<b>${boardingStop.name}</b><br>Board here`))
             .addTo(mapRef.current);
-          markersRef.current.push(m);
-          expand(boardingStop.lng, boardingStop.lat);
+          routeMarkersRef.current.push(m);
+          lngs.push(boardingStop.lng); lats.push(boardingStop.lat);
         }
 
-        // Destination marker
         if (destCoords) {
           const el = document.createElement("div");
           el.innerHTML = `
             <div style="
               background:#f0c040;color:#1a1200;
-              width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-              border:2px solid white;box-shadow:0 4px 14px rgba(0,0,0,.5);
-              display:flex;align-items:center;justify-content:center;font-size:16px;
-            ">
+              width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+              border:2px solid white;box-shadow:0 4px 16px rgba(240,192,64,.4),0 2px 6px rgba(0,0,0,.5);
+              display:flex;align-items:center;justify-content:center;font-size:17px;">
               <span style="transform:rotate(45deg)">📍</span>
             </div>`;
           const m = new mapboxgl.Marker({ element: el, anchor: "bottom-left" })
             .setLngLat([destCoords.lng, destCoords.lat])
             .setPopup(new mapboxgl.Popup({ offset: 28 }).setText("Your destination"))
             .addTo(mapRef.current);
-          markersRef.current.push(m);
-          expand(destCoords.lng, destCoords.lat);
+          routeMarkersRef.current.push(m);
+          lngs.push(destCoords.lng); lats.push(destCoords.lat);
         }
 
-        if (userLocation) expand(userLocation.lng, userLocation.lat);
+        if (userLocation) { lngs.push(userLocation.lng); lats.push(userLocation.lat); }
 
-        // Fit bounds smoothly
-        const hasBounds = bounds[0][0] !== 999;
-        if (hasBounds) {
-          if (boardingStop && destCoords) {
-            mapRef.current.fitBounds(bounds, { padding: 72, maxZoom: 15, duration: 900 });
-          } else {
-            mapRef.current.flyTo({ center: [bounds[0][0], bounds[0][1]], zoom: 15, duration: 900 });
-          }
+        if (lngs.length > 1) {
+          // Fit bounds with tilt
+          const sw: [number, number] = [Math.min(...lngs), Math.min(...lats)];
+          const ne: [number, number] = [Math.max(...lngs), Math.max(...lats)];
+          mapRef.current.fitBounds([sw, ne], {
+            padding: { top: 80, bottom: 100, left: 60, right: 60 },
+            maxZoom: 15,
+            pitch:   hasRoute ? 36 : 0,
+            bearing: 0,
+            duration: 950,
+            easing: (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+          });
+        } else if (lngs.length === 1) {
+          mapRef.current.easeTo({
+            center:  [lngs[0], lats[0]],
+            zoom:    15,
+            pitch:   hasRoute ? 36 : 0,
+            duration: 800,
+          });
+        } else {
+          // No route — reset pitch
+          mapRef.current.easeTo({ pitch: 0, bearing: 0, duration: 600 });
         }
       });
     };
@@ -222,12 +325,14 @@ export default function RouteMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardingStop?.lat, boardingStop?.lng, destCoords?.lat, destCoords?.lng, walkingGeoJSON]);
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── No token fallback ─────────────────────────────────────────────────────
   if (!TOKEN) {
     return (
-      <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[#1e2e1c] bg-surface-card flex items-center justify-center flex-col gap-2">
+      <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[#1e2e1c] bg-surface-card flex flex-col items-center justify-center gap-2">
         <span className="text-2xl">🗺️</span>
-        <p className="text-content-muted text-xs text-center px-4">Add <code className="text-accent">NEXT_PUBLIC_MAPBOX_TOKEN</code> to enable the map</p>
+        <p className="text-content-muted text-xs text-center px-4">
+          Add <code className="text-accent">NEXT_PUBLIC_MAPBOX_TOKEN</code> to enable the map
+        </p>
       </div>
     );
   }
@@ -235,12 +340,31 @@ export default function RouteMap({
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[#1e2e1c]">
       <style>{`
-        @keyframes sfping { 0%{transform:scale(1);opacity:.3} 70%{transform:scale(2.8);opacity:0} 100%{transform:scale(1);opacity:0} }
-        .mapboxgl-ctrl-attrib { background: rgba(13,26,11,.7) !important; border-radius: 6px !important; }
-        .mapboxgl-ctrl-attrib a { color: #4a7c59 !important; }
-        .mapboxgl-ctrl-attrib-button { display: none !important; }
-        .mapboxgl-popup-content { background: #1a2e18; color: #d4e8cc; border: 1px solid #2e4a2a; border-radius: 10px; padding: 8px 12px; font-size: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.6); }
-        .mapboxgl-popup-tip { border-top-color: #1a2e18 !important; border-bottom-color: #1a2e18 !important; }
+        @keyframes sfping {
+          0%   { transform:scale(1);  opacity:.28 }
+          70%  { transform:scale(2.8);opacity:0   }
+          100% { transform:scale(1);  opacity:0   }
+        }
+        .mapboxgl-ctrl-attrib {
+          background: rgba(13,26,11,.75) !important;
+          border-radius: 6px !important;
+        }
+        .mapboxgl-ctrl-attrib a { color: #6aff9a !important; }
+        .mapboxgl-ctrl-attrib-button { display:none !important; }
+        .mapboxgl-popup-content {
+          background: #152213;
+          color: #d4e8cc;
+          border: 1px solid #2e4a2a;
+          border-radius: 10px;
+          padding: 9px 13px;
+          font-size: 12px;
+          box-shadow: 0 6px 24px rgba(0,0,0,.7);
+        }
+        .mapboxgl-popup-tip {
+          border-top-color:    #152213 !important;
+          border-bottom-color: #152213 !important;
+        }
+        .mapboxgl-popup-close-button { color: #6aff9a; font-size: 16px; }
       `}</style>
       <div ref={containerRef} className="w-full h-full" />
     </div>
