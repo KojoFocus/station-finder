@@ -203,13 +203,44 @@ export default function RouteMap({
         }
         prevLocRef.current = userLocation;
 
-        // Update pulsing dot
+        // Navigation puck: accuracy ring + direction cone + centre dot
         userMarkerRef.current?.remove();
+        const bearing = bearingRef.current;
         const el = document.createElement("div");
-        el.style.cssText = "position:relative;width:22px;height:22px;";
+        el.style.cssText = "position:relative;width:56px;height:56px;";
         el.innerHTML = `
-          <div style="position:absolute;inset:0;border-radius:50%;background:#4a7c59;opacity:.28;animation:sfping 1.8s ease-out infinite"></div>
-          <div style="position:absolute;top:4px;left:4px;width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2.5px solid white;box-shadow:0 2px 10px rgba(0,0,0,.6)"></div>`;
+          <svg width="56" height="56" viewBox="0 0 56 56" style="position:absolute;inset:0;overflow:visible">
+            <!-- Accuracy ring (pulses) -->
+            <circle cx="28" cy="28" r="26"
+              fill="rgba(74,124,89,0.10)"
+              stroke="rgba(106,255,154,0.25)"
+              stroke-width="1"
+              style="animation:sfping 2s ease-out infinite"/>
+            <!-- Direction cone — points up, rotates with bearing -->
+            <g transform="rotate(${bearing} 28 28)">
+              <path d="M28 4 L22 22 L28 17 L34 22 Z"
+                fill="#6aff9a"
+                opacity="0.92"/>
+              <path d="M28 4 L22 22 L28 17 L34 22 Z"
+                fill="none"
+                stroke="rgba(255,255,255,0.35)"
+                stroke-width="0.8"
+                stroke-linejoin="round"/>
+            </g>
+            <!-- White halo under dot -->
+            <circle cx="28" cy="28" r="11"
+              fill="white"
+              opacity="0.15"/>
+            <!-- Dot -->
+            <circle cx="28" cy="28" r="8"
+              fill="#4a7c59"
+              stroke="white"
+              stroke-width="3"
+              style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.7))"/>
+            <!-- Dot inner highlight -->
+            <circle cx="26" cy="26" r="2.5"
+              fill="rgba(255,255,255,0.45)"/>
+          </svg>`;
         userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat([userLocation.lng, userLocation.lat])
           .addTo(mapRef.current);
