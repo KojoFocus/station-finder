@@ -329,9 +329,19 @@ export default function HomePage() {
       return;
     }
 
-    const noGps = () => addMsg({ from: "bot", type: "text",
-      text: "Akwaaba! 👋 Couldn't get your GPS. Tell me where you are and where you're going — e.g. *Teiman to Kaneshie*" });
-    if (!navigator.geolocation) { noGps(); return; }
+    const askManually = () => {
+      addMsg({ from: "bot", type: "text",
+        text: "Akwaaba! 👋 Where are you headed? Just tell me your starting point too — e.g. *Teiman to Kaneshie*" });
+    };
+
+    const onGpsDenied = () => {
+      setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
+      addMsg({ from: "bot", type: "text",
+        text: "Akwaaba! 👋 Location access is off.\n\nTo share your location:\n• Android: tap the 🔒 icon in your browser bar → Site settings → Location → Allow\n• iPhone: Settings → Safari → Location → Allow\n\nOr just tell me where you are — e.g. *I'm at Teiman, going to Kaneshie*" });
+      addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] });
+    };
+
+    if (!navigator.geolocation) { askManually(); return; }
 
     addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋 Getting your location…" });
     navigator.geolocation.getCurrentPosition(
@@ -340,9 +350,12 @@ export default function HomePage() {
         setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
         addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?" });
       },
-      () => {
-        setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
-        noGps();
+      (err) => {
+        if (err.code === 1) { onGpsDenied(); }          // user denied
+        else {
+          setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
+          askManually();
+        }
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
@@ -492,6 +505,16 @@ export default function HomePage() {
   const onChip = useCallback((action: string) => {
     if (action === "start_nav") startNavigation();
     if (action === "map_it")   router.push("/map-it");
+    if (action === "retry_gps") {
+      navigator.geolocation?.getCurrentPosition(
+        (p) => {
+          setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
+          addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?" });
+        },
+        () => addMsg({ from: "bot", type: "text", text: "Still blocked — please enable location in your browser settings, then refresh." }),
+        { timeout: 10000, enableHighAccuracy: true }
+      );
+    }
     if (action === "share_wa") {
       const r = resultRef.current;
       if (!r) return;
