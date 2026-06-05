@@ -1010,7 +1010,6 @@ export default function AdminPage() {
             </div>
           </div>
         )}
-      </div>
 
         {/* ── REPORTS TAB ── */}
         {activeTab === "reports" && (
@@ -1070,7 +1069,7 @@ export default function AdminPage() {
             </div>
           </div>
         )}
-      </div>
+      </div>  {/* end bottom sheet */}
 
       {/* Map modal (Submissions tab) */}
       {mapStop && <MapModal stop={mapStop} onClose={() => setMapStop(null)} />}
