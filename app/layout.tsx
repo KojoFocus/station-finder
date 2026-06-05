@@ -1,5 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,7 +26,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-[#0d1a0b]" suppressHydrationWarning>{children}</body>
+      <body className="antialiased bg-[#0d1a0b]" suppressHydrationWarning>
+        {children}
+        <Script id="sw" strategy="afterInteractive">
+          {`if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');`}
+        </Script>
+      </body>
     </html>
   );
 }
