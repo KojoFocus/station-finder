@@ -28,6 +28,14 @@ interface Stats {
   flagged: number;
 }
 
+interface ReportEntry {
+  id:           string;
+  destination:  string;
+  routeSummary: string;
+  reason:       string;
+  createdAt:    string;
+}
+
 interface UserEntry {
   submitterId: string;
   count: number;
@@ -41,7 +49,7 @@ interface UserEntry {
 }
 
 type FilterTab = "ALL" | "PENDING" | "VERIFIED" | "FLAGGED";
-type AdminTab  = "submissions" | "map" | "users";
+type AdminTab  = "submissions" | "map" | "users" | "reports";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -49,6 +57,7 @@ const ADMIN_TABS: { key: AdminTab; label: string }[] = [
   { key: "submissions", label: "Submissions" },
   { key: "map",         label: "Map Overview" },
   { key: "users",       label: "User Rewards" },
+  { key: "reports",     label: "Reports"      },
 ];
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
@@ -374,6 +383,10 @@ export default function AdminPage() {
   const [users,        setUsers]        = useState<UserEntry[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
+  // ── Reports
+  const [reports,        setReports]        = useState<ReportEntry[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+
   // ── Derived
   const corridors    = extractCorridors(stops);
   const affectedCount = corridor
@@ -416,6 +429,17 @@ export default function AdminPage() {
     setUsersLoading(false);
   }, []);
 
+  // ── Fetch reports
+  const fetchReports = useCallback(async (secret: string) => {
+    setReportsLoading(true);
+    try {
+      const res  = await fetch("/api/admin/reports", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await res.json() as { reports: ReportEntry[] };
+      setReports(data.reports ?? []);
+    } catch { /* silent */ }
+    setReportsLoading(false);
+  }, []);
+
   // Restore session
   useEffect(() => {
     const saved = sessionStorage.getItem("admin_secret");
@@ -433,6 +457,13 @@ export default function AdminPage() {
       fetchUsers(getSecret());
     }
   }, [activeTab, authed, users.length, fetchUsers]);
+
+  // Load reports when switching to reports tab
+  useEffect(() => {
+    if (activeTab === "reports" && authed && reports.length === 0) {
+      fetchReports(getSecret());
+    }
+  }, [activeTab, authed, reports.length, fetchReports]);
 
   // Clear selection and reset page on filter/search change
   useEffect(() => { setSelectedIds(new Set()); setMergeMsg(null); setPage(1); }, [filter, search]);
@@ -563,6 +594,16 @@ export default function AdminPage() {
     setUpdatingId(null);
   }, []);
 
+  // ── Delete report
+  const handleDeleteReport = useCallback(async (id: string) => {
+    setReports((prev) => prev.filter((r) => r.id !== id));
+    await fetch("/api/admin/reports", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getSecret()}` },
+      body: JSON.stringify({ id }),
+    });
+  }, []);
+
   // ── Fare update
   const handleFareUpdate = useCallback(async () => {
     const fare = parseFloat(newFare);
@@ -643,8 +684,11 @@ export default function AdminPage() {
                 : "text-content-secondary border border-stroke bg-surface-card"
             }`}>
             {tab.label}
-            {tab.key === "users" && spamCount > 0 && (
+            {tab.key === "users"   && spamCount       > 0 && (
               <span className="ml-1.5 bg-[#f87171]/20 text-status-danger text-[9px] px-1.5 py-px rounded-full">{spamCount}</span>
+            )}
+            {tab.key === "reports" && reports.length  > 0 && (
+              <span className="ml-1.5 bg-[#f59e0b]/20 text-reward text-[9px] px-1.5 py-px rounded-full">{reports.length}</span>
             )}
           </button>
         ))}
@@ -963,6 +1007,66 @@ export default function AdminPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+      </div>
+
+        {/* ── REPORTS TAB ── */}
+        {activeTab === "reports" && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="shrink-0 px-4 pb-2 flex items-center justify-between">
+              <p className="text-content-secondary text-xs">{reports.length} report{reports.length !== 1 ? "s" : ""} from users</p>
+              {reports.length > 0 && (
+                <button onClick={() => fetchReports(getSecret())}
+                  className="text-[10px] text-content-secondary border border-stroke px-2.5 py-1.5 rounded-full active:scale-95">
+                  Refresh
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 pb-6 flex flex-col gap-3">
+              {reportsLoading && Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-surface-card border border-stroke rounded-2xl p-4 animate-pulse">
+                  <div className="h-4 bg-stroke rounded w-1/2 mb-2" />
+                  <div className="h-3 bg-stroke rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-stroke rounded w-1/3" />
+                </div>
+              ))}
+
+              {!reportsLoading && reports.length === 0 && (
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                  <p className="text-2xl">✅</p>
+                  <p className="text-content-primary font-medium text-sm">No reports yet</p>
+                  <p className="text-content-muted text-xs max-w-[240px] leading-relaxed">
+                    Users can flag wrong route info from the chat. Reports will appear here.
+                  </p>
+                </div>
+              )}
+
+              {!reportsLoading && reports.map((r) => (
+                <div key={r.id} className="bg-surface-card border border-stroke rounded-2xl p-4 flex flex-col gap-2"
+                     style={{ borderLeftColor: "#f59e0b", borderLeftWidth: 3 }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-content-primary font-semibold text-sm leading-snug">{r.reason}</p>
+                      <p className="text-content-muted text-[10px] mt-0.5">{r.destination}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-content-disabled text-[10px]">{timeAgo(r.createdAt)}</span>
+                      <button onClick={() => handleDeleteReport(r.id)}
+                        className="text-content-disabled hover:text-status-danger active:scale-90 transition-all">
+                        <ITrash />
+                      </button>
+                    </div>
+                  </div>
+                  {r.routeSummary && (
+                    <p className="text-content-secondary text-xs leading-relaxed bg-raised rounded-xl px-3 py-2">
+                      {r.routeSummary}
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -338,7 +338,10 @@ function ChatMode({ onSwitch }: { onSwitch: () => void }) {
       const fare = data.trotro ? data.trotro.leg1.fare + (data.trotro.leg2?.fare ?? 0) : null;
       addMsg({ from: "bot", type: "text",  text: `Found a route!${fare ? ` Total fare: ₵${fare.toFixed(2)}` : ""}` });
       addMsg({ from: "bot", type: "route", result: data });
-      addMsg({ from: "bot", type: "chips", chips: [{ label: "Start Navigation →", action: "start_nav" }] });
+      addMsg({ from: "bot", type: "chips", chips: [
+        { label: "Start Navigation →", action: "start_nav" },
+        { label: "📤 Share on WhatsApp", action: "share_wa"  },
+      ]});
     } catch { removeTyping(); addMsg({ from: "bot", type: "text", text: "Connection error. Please try again." }); }
     setProcessing(false);
   }, [addMsg, removeTyping]);
@@ -448,6 +451,29 @@ function ChatMode({ onSwitch }: { onSwitch: () => void }) {
   const onChip = useCallback((action: string) => {
     if (action === "start_nav") startNavigation();
     if (action === "map_it")   router.push("/map-it");
+    if (action === "share_wa") {
+      const r = resultRef.current;
+      if (!r) return;
+      const fare = r.trotro
+        ? (r.trotro.leg1.fare + (r.trotro.leg2?.fare ?? 0)).toFixed(2)
+        : null;
+      const duration = r.trotro
+        ? r.trotro.leg1.durationMins + (r.trotro.leg2?.durationMins ?? 0)
+        : null;
+      const lines = [
+        `🚐 *Station Finder Route*`,
+        ``,
+        `🚶 Walk to *${r.boardingStop.name}* (~${r.boardingStop.walkingMins} min)`,
+        `📍 ${r.boardingStop.description}`,
+        r.trotro ? `` : null,
+        r.trotro ? `🚐 Board: *${r.trotro.leg1.whatToLookFor}*` : null,
+        r.trotro ? `➡️ ${r.trotro.leg1.from} → ${r.trotro.leg1.to}` : null,
+        fare     ? `💰 Fare: *₵${fare}*${duration ? ` · ~${duration} min` : ""}` : null,
+        ``,
+        `Find yours 👉 https://stationfinder.vercel.app`,
+      ].filter((l) => l !== null).join("\n");
+      window.open(`https://wa.me/?text=${encodeURIComponent(lines)}`, "_blank");
+    }
   }, [startNavigation, router]);
 
   const mapH = navigating ? "46vh" : result ? "36vh" : "30vh";
@@ -570,17 +596,34 @@ function NavMode({ onSwitch }: { onSwitch: () => void }) {
   const [error,       setError]      = useState<string | null>(null);
   const [stepIdx,     setStepIdx]    = useState(0);
   const [distToNext,  setDistToNext] = useState<number | null>(null);
-  const [voiceOn,     setVoiceOn]    = useState(false);
-  const [watchId,     setWatchId]    = useState<number | null>(null);
+  const [voiceOn,      setVoiceOn]     = useState(false);
+  const [watchId,      setWatchId]     = useState<number | null>(null);
+  const [suggestions,  setSuggestions] = useState<string[]>([]);
 
-  const inputRef   = useRef<HTMLInputElement>(null);
-  const resultRef  = useRef<DirectionsResult | null>(null);
-  const stepIdxRef = useRef(0);
-  const voiceOnRef = useRef(false);
+  const inputRef    = useRef<HTMLInputElement>(null);
+  const resultRef   = useRef<DirectionsResult | null>(null);
+  const stepIdxRef  = useRef(0);
+  const voiceOnRef  = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { resultRef.current = result; },  [result]);
   useEffect(() => { stepIdxRef.current = stepIdx; }, [stepIdx]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
+
+  // Autocomplete: debounce fetch on destination change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = destination.trim();
+    if (q.length < 2 || phase !== "ready") { setSuggestions([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/locations?q=${encodeURIComponent(q)}`);
+        const data = await res.json() as { locations: { name: string }[] };
+        setSuggestions(data.locations?.map((l) => l.name) ?? []);
+      } catch { setSuggestions([]); }
+    }, 280);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [destination, phase]);
 
   useEffect(() => {
     if (!navigator.geolocation) { setPhase("ready"); return; }
@@ -599,7 +642,7 @@ function NavMode({ onSwitch }: { onSwitch: () => void }) {
 
   const search = async (dest: string) => {
     const d = dest.trim(); if (!d) return;
-    setDest(d); setPhase("searching"); setError(null);
+    setDest(d); setPhase("searching"); setError(null); setSuggestions([]);
     const body: Record<string, unknown> = { destination: d };
     if (fromText.trim()) body.fromAddress = fromText.trim();
     else { body.userLat = userLoc?.lat ?? 5.6863; body.userLng = userLoc?.lng ?? -0.1488; }
@@ -697,6 +740,16 @@ function NavMode({ onSwitch }: { onSwitch: () => void }) {
                   <input ref={inputRef} type="text" value={destination} onChange={(e) => setDest(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search(destination)} placeholder="Where are you going?" autoFocus className="flex-1 bg-transparent text-sm text-content-primary placeholder-content-placeholder outline-none" />
                 </div>
               </div>
+              {suggestions.length > 0 && destination.trim().length >= 2 && (
+                <div className="flex gap-2 flex-wrap -mt-1">
+                  {suggestions.map((s) => (
+                    <button key={s} onClick={() => { setDest(s); setSuggestions([]); search(s); }}
+                      className="text-xs text-accent border border-accent/30 bg-accent/10 px-3 py-1.5 rounded-full active:scale-95 transition-all">
+                      📍 {s}
+                    </button>
+                  ))}
+                </div>
+              )}
               {error && <p className="text-red-400/80 text-xs px-1">{error}</p>}
               <button onClick={() => search(destination)} disabled={!destination.trim() || phase === "searching"}
                 className="w-full py-4 rounded-2xl bg-accent flex items-center justify-center gap-2 text-white font-semibold text-sm shadow-lg shadow-accent-sm disabled:opacity-30 active:scale-[0.98] transition-all">
