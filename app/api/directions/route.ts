@@ -156,6 +156,18 @@ async function getWalkingRoute(from: LatLng, to: LatLng) {
   }
 }
 
+// ─── Analytics helper ─────────────────────────────────────────────────────────
+function logSearch(destination: string, found: boolean, userLat?: number, userLng?: number) {
+  prisma.searchLog.create({
+    data: {
+      destination: destination.trim().toLowerCase().slice(0, 200),
+      found,
+      userLat: userLat ?? null,
+      userLng: userLng ?? null,
+    },
+  }).catch(() => { /* never break the app over analytics */ });
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
@@ -176,11 +188,13 @@ export async function POST(req: NextRequest) {
     }
 
     const destCoords = await geocodeGhana(destination);
-    if (!destCoords)
+    if (!destCoords) {
+      logSearch(destination, false, userLat, userLng);
       return NextResponse.json(
         { error: `Couldn't find "${destination}" in Ghana. Try a landmark or area name.` },
         { status: 404 }
       );
+    }
 
     const locations = await prisma.location.findMany();
 
@@ -220,6 +234,8 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    logSearch(destination, !!trotroLeg1, userLat, userLng);
 
     return NextResponse.json({
       destCoords,

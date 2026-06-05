@@ -28,6 +28,17 @@ interface Stats {
   flagged: number;
 }
 
+interface AnalyticsData {
+  total:      number;
+  todayTotal: number;
+  weekTotal:  number;
+  foundTotal: number;
+  hitRate:    number;
+  topAll:     { destination: string; count: number }[];
+  topMissing: { destination: string; count: number }[];
+  byDay:      { day: string; count: number }[];
+}
+
 interface ReportEntry {
   id:           string;
   destination:  string;
@@ -49,12 +60,13 @@ interface UserEntry {
 }
 
 type FilterTab = "ALL" | "PENDING" | "VERIFIED" | "FLAGGED";
-type AdminTab  = "submissions" | "map" | "users" | "reports" | "addstop";
+type AdminTab  = "submissions" | "map" | "users" | "reports" | "addstop" | "analytics";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ADMIN_TABS: { key: AdminTab; label: string }[] = [
   { key: "submissions", label: "Stops"     },
+  { key: "analytics",   label: "Analytics" },
   { key: "map",         label: "Map"       },
   { key: "users",       label: "Users"     },
   { key: "reports",     label: "Reports"   },
@@ -388,6 +400,10 @@ export default function AdminPage() {
   const [reports,        setReports]        = useState<ReportEntry[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
 
+  // ── Analytics
+  const [analytics,        setAnalytics]        = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
   // ── Add Stop (admin map-it)
   type AddPhase = "idle" | "locating" | "form" | "submitting" | "success";
   const [addPhase,       setAddPhase]       = useState<AddPhase>("idle");
@@ -440,6 +456,17 @@ export default function AdminPage() {
     setUsersLoading(false);
   }, []);
 
+  // ── Fetch analytics
+  const fetchAnalytics = useCallback(async (secret: string) => {
+    setAnalyticsLoading(true);
+    try {
+      const res  = await fetch("/api/admin/analytics", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await res.json() as AnalyticsData;
+      setAnalytics(data);
+    } catch { /* silent */ }
+    setAnalyticsLoading(false);
+  }, []);
+
   // ── Fetch reports
   const fetchReports = useCallback(async (secret: string) => {
     setReportsLoading(true);
@@ -475,6 +502,13 @@ export default function AdminPage() {
       fetchReports(getSecret());
     }
   }, [activeTab, authed, reports.length, fetchReports]);
+
+  // Load analytics when switching to analytics tab
+  useEffect(() => {
+    if (activeTab === "analytics" && authed && !analytics) {
+      fetchAnalytics(getSecret());
+    }
+  }, [activeTab, authed, analytics, fetchAnalytics]);
 
   // Clear selection and reset page on filter/search change
   useEffect(() => { setSelectedIds(new Set()); setMergeMsg(null); setPage(1); }, [filter, search]);
@@ -685,8 +719,8 @@ export default function AdminPage() {
         </div>
       </header>
 
-      {/* Tab bar */}
-      <div className="shrink-0 px-5 pb-2 flex gap-1">
+      {/* Tab bar — scrollable for 6 tabs */}
+      <div className="shrink-0 px-5 pb-2 flex gap-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
         {ADMIN_TABS.map((tab) => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
@@ -1018,6 +1052,111 @@ export default function AdminPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── ANALYTICS TAB ── */}
+        {activeTab === "analytics" && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="shrink-0 px-4 pb-2 flex items-center justify-between">
+              <p className="text-content-secondary text-xs">Live search data</p>
+              <button onClick={() => fetchAnalytics(getSecret())}
+                className="text-[10px] text-content-secondary border border-stroke px-2.5 py-1.5 rounded-full active:scale-95">
+                Refresh
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 pb-6 flex flex-col gap-4">
+              {analyticsLoading && (
+                <div className="flex items-center justify-center py-16 gap-2">
+                  <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <span className="text-content-secondary text-sm">Loading…</span>
+                </div>
+              )}
+
+              {analytics && !analyticsLoading && (
+                <>
+                  {/* Stats row */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: "Total Searches",  value: analytics.total,      color: "text-content-primary" },
+                      { label: "Today",            value: analytics.todayTotal, color: "text-accent" },
+                      { label: "This Week",        value: analytics.weekTotal,  color: "text-accent" },
+                      { label: "Hit Rate",         value: `${analytics.hitRate}%`, color: analytics.hitRate >= 50 ? "text-status-verified" : "text-status-danger" },
+                    ].map((s) => (
+                      <div key={s.label} className="bg-surface-card border border-stroke rounded-xl px-3 py-3">
+                        <p className={`font-black text-2xl tabular-nums leading-none ${s.color}`}>{s.value}</p>
+                        <p className="text-content-muted text-[10px] uppercase tracking-widest mt-1">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Daily chart — simple bar chart */}
+                  {analytics.byDay.length > 0 && (
+                    <div className="bg-surface-card border border-stroke rounded-2xl p-4">
+                      <p className="text-content-secondary text-xs font-medium mb-3">Last 7 Days</p>
+                      <div className="flex items-end gap-1.5 h-16">
+                        {(() => {
+                          const max = Math.max(...analytics.byDay.map((d) => d.count), 1);
+                          return analytics.byDay.map((d) => (
+                            <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
+                              <div className="w-full rounded-t-sm bg-accent/70 transition-all"
+                                   style={{ height: `${Math.max(4, (d.count / max) * 52)}px` }} />
+                              <p className="text-[8px] text-content-disabled">{d.day}</p>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Missing routes — the gold */}
+                  <div className="bg-surface-card border border-stroke rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm">🚫</span>
+                      <p className="text-content-primary text-sm font-semibold">Missing Routes</p>
+                      <span className="ml-auto text-[10px] text-content-muted">Add these first</span>
+                    </div>
+                    {analytics.topMissing.length === 0 ? (
+                      <p className="text-content-muted text-xs">No failed searches yet — great!</p>
+                    ) : analytics.topMissing.map((r, i) => (
+                      <div key={r.destination} className="flex items-center gap-3 py-2 border-b border-stroke last:border-0">
+                        <span className="text-content-muted text-xs tabular-nums w-4">{i + 1}</span>
+                        <p className="text-content-primary text-sm flex-1 capitalize">{r.destination}</p>
+                        <span className="text-status-danger text-xs tabular-nums font-semibold">{r.count}×</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Top searched destinations */}
+                  <div className="bg-surface-card border border-stroke rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm">🔍</span>
+                      <p className="text-content-primary text-sm font-semibold">Top Destinations</p>
+                    </div>
+                    {analytics.topAll.length === 0 ? (
+                      <p className="text-content-muted text-xs">No searches yet.</p>
+                    ) : analytics.topAll.map((r, i) => (
+                      <div key={r.destination} className="flex items-center gap-3 py-2 border-b border-stroke last:border-0">
+                        <span className="text-content-muted text-xs tabular-nums w-4">{i + 1}</span>
+                        <p className="text-content-primary text-sm flex-1 capitalize">{r.destination}</p>
+                        <span className="text-accent text-xs tabular-nums font-semibold">{r.count}×</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!analytics && !analyticsLoading && (
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                  <p className="text-2xl">📊</p>
+                  <p className="text-content-primary font-medium text-sm">No data yet</p>
+                  <p className="text-content-muted text-xs max-w-[240px] leading-relaxed">
+                    Analytics will appear once users start searching for routes.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

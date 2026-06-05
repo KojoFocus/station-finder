@@ -57,6 +57,16 @@ model CrowdsourcedStop {
   createdAt     DateTime @default(now())
 }
 
+// Every route search logged for analytics — drives "what routes to add next"
+model SearchLog {
+  id          String   @id @default(uuid())
+  destination String
+  found       Boolean
+  userLat     Float?
+  userLng     Float?
+  createdAt   DateTime @default(now())
+}
+
 // User-submitted route quality reports (submitted from chat UI)
 model Report {
   id           String   @id @default(uuid())

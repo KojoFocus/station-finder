@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({
         <Script id="sw" strategy="afterInteractive">
           {`if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');`}
         </Script>
+        <Analytics />
       </body>
     </html>
   );
