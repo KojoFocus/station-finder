@@ -49,15 +49,16 @@ interface UserEntry {
 }
 
 type FilterTab = "ALL" | "PENDING" | "VERIFIED" | "FLAGGED";
-type AdminTab  = "submissions" | "map" | "users" | "reports";
+type AdminTab  = "submissions" | "map" | "users" | "reports" | "addstop";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ADMIN_TABS: { key: AdminTab; label: string }[] = [
-  { key: "submissions", label: "Submissions" },
-  { key: "map",         label: "Map Overview" },
-  { key: "users",       label: "User Rewards" },
-  { key: "reports",     label: "Reports"      },
+  { key: "submissions", label: "Stops"     },
+  { key: "map",         label: "Map"       },
+  { key: "users",       label: "Users"     },
+  { key: "reports",     label: "Reports"   },
+  { key: "addstop",     label: "+ Add"     },
 ];
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
@@ -386,6 +387,16 @@ export default function AdminPage() {
   // ── Reports
   const [reports,        setReports]        = useState<ReportEntry[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+
+  // ── Add Stop (admin map-it)
+  type AddPhase = "idle" | "locating" | "form" | "submitting" | "success";
+  const [addPhase,       setAddPhase]       = useState<AddPhase>("idle");
+  const [addCoords,      setAddCoords]      = useState<{ lat: number; lng: number } | null>(null);
+  const [addStopName,    setAddStopName]    = useState("");
+  const [addRoutes,      setAddRoutes]      = useState("");
+  const [addGpsError,    setAddGpsError]    = useState<string | null>(null);
+  const [addSubmitError, setAddSubmitError] = useState<string | null>(null);
+  const [addedStop,      setAddedStop]      = useState<string | null>(null);
 
   // ── Derived
   const corridors    = extractCorridors(stops);
@@ -1067,6 +1078,129 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        {/* ── ADD STOP TAB ── */}
+        {activeTab === "addstop" && (
+          <div className="flex-1 overflow-y-auto px-4 pb-6 flex flex-col gap-4 pt-2">
+
+            {(addPhase === "idle" || addPhase === "locating") && (
+              <>
+                <div>
+                  <p className="text-content-primary font-semibold text-base">Add a verified stop</p>
+                  <p className="text-content-secondary text-sm mt-0.5">Stand at the stop and tap below — it will be instantly verified.</p>
+                </div>
+                {addGpsError && (
+                  <div className="bg-surface-card border border-stroke rounded-xl px-4 py-3">
+                    <p className="text-status-danger text-sm">{addGpsError}</p>
+                  </div>
+                )}
+                <div className="flex-1 flex flex-col items-center justify-center gap-5 py-4">
+                  <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
+                    {addPhase === "locating" ? (
+                      <>
+                        <div className="absolute inset-0 rounded-full border border-accent/30 animate-ping" />
+                        <button disabled className="relative w-36 h-36 rounded-full bg-surface-card border-2 border-accent/40 flex flex-col items-center justify-center gap-3">
+                          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                          <p className="text-accent text-xs font-medium text-center px-4 leading-snug">Getting GPS…</p>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setAddGpsError(null); setAddPhase("locating");
+                          navigator.geolocation?.getCurrentPosition(
+                            (p) => { setAddCoords({ lat: p.coords.latitude, lng: p.coords.longitude }); setAddPhase("form"); },
+                            () => { setAddGpsError("Couldn't get GPS. Check browser permissions."); setAddPhase("idle"); },
+                            { timeout: 15000, enableHighAccuracy: true }
+                          );
+                        }}
+                        className="relative w-36 h-36 rounded-full bg-accent flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform shadow-lg shadow-accent">
+                        <span className="text-3xl">📍</span>
+                        <p className="text-white text-xs font-semibold text-center px-5 leading-snug">I&apos;m at a stop!</p>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-content-disabled text-xs text-center">Stops you add are verified instantly — no votes needed.</p>
+                </div>
+              </>
+            )}
+
+            {(addPhase === "form" || addPhase === "submitting") && addCoords && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2.5 bg-surface-card border border-stroke rounded-xl px-4 py-2.5">
+                  <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                  <p className="text-accent text-xs font-medium">GPS locked</p>
+                  <p className="text-content-muted text-xs ml-auto tabular-nums">{addCoords.lat.toFixed(5)}, {addCoords.lng.toFixed(5)}</p>
+                </div>
+                {addSubmitError && <p className="text-status-danger text-sm">{addSubmitError}</p>}
+                <div className="bg-surface-card border border-stroke rounded-2xl overflow-hidden">
+                  <div className="flex items-start gap-3 px-4 py-3.5 border-b border-stroke-subtle">
+                    <span className="text-base shrink-0 mt-0.5">📍</span>
+                    <div className="flex-1 min-w-0">
+                      <input type="text" value={addStopName} onChange={(e) => setAddStopName(e.target.value)}
+                        placeholder="Stop name (as locals know it)" autoFocus
+                        className="w-full bg-transparent text-sm text-content-primary placeholder-content-placeholder outline-none" />
+                      <p className="text-content-disabled text-[11px] mt-1.5">e.g. Oyarifa Junction, Borga Town</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 px-4 py-3.5">
+                    <span className="text-base shrink-0 mt-0.5">🚐</span>
+                    <div className="flex-1 min-w-0">
+                      <input type="text" value={addRoutes} onChange={(e) => setAddRoutes(e.target.value)}
+                        placeholder="Routes & fares (optional)"
+                        className="w-full bg-transparent text-sm text-content-primary placeholder-content-placeholder outline-none" />
+                      <p className="text-content-disabled text-[11px] mt-1.5">e.g. Madina – 1.50 GHS, Circle – 3 GHS</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!addStopName.trim() || !addCoords) return;
+                    setAddPhase("submitting"); setAddSubmitError(null);
+                    try {
+                      const res = await fetch("/api/admin/add-stop", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getSecret()}` },
+                        body: JSON.stringify({ latitude: addCoords.lat, longitude: addCoords.lng, stopName: addStopName, routes: addRoutes }),
+                      });
+                      const data = await res.json() as { stop?: { stopName: string }; error?: string };
+                      if (!res.ok || !data.stop) { setAddSubmitError(data.error ?? "Failed to add stop."); setAddPhase("form"); return; }
+                      setAddedStop(data.stop.stopName);
+                      setAddPhase("success");
+                      fetchStops(getSecret()); // refresh submissions list
+                    } catch { setAddSubmitError("Network error."); setAddPhase("form"); }
+                  }}
+                  disabled={!addStopName.trim() || addPhase === "submitting"}
+                  className="w-full py-4 rounded-2xl bg-accent flex items-center justify-center gap-2 text-white font-semibold text-sm shadow-lg shadow-accent-sm disabled:opacity-30 active:scale-[0.98] transition-all">
+                  {addPhase === "submitting"
+                    ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Saving…</>
+                    : "Add as Verified Stop ✓"}
+                </button>
+                <button onClick={() => { setAddPhase("idle"); setAddCoords(null); setAddStopName(""); setAddRoutes(""); setAddSubmitError(null); }}
+                  className="text-center text-content-muted text-sm py-1 active:opacity-60">
+                  Start over
+                </button>
+              </div>
+            )}
+
+            {addPhase === "success" && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-surface-elevated border border-stroke flex items-center justify-center text-3xl">✅</div>
+                <div>
+                  <p className="text-content-primary font-bold text-base">Stop added!</p>
+                  <p className="text-content-secondary text-sm mt-1">&ldquo;{addedStop}&rdquo; is now verified and on the map.</p>
+                </div>
+                <button
+                  onClick={() => { setAddPhase("idle"); setAddCoords(null); setAddStopName(""); setAddRoutes(""); setAddedStop(null); }}
+                  className="text-xs text-accent border border-stroke px-5 py-2.5 rounded-full active:scale-95">
+                  Add another stop
+                </button>
+                <button onClick={() => setActiveTab("submissions")} className="text-xs text-content-muted active:opacity-60">
+                  View all stops →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>  {/* end bottom sheet */}
