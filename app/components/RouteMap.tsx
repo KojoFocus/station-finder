@@ -53,13 +53,18 @@ export default function RouteMap({
         center: DEFAULT_CENTER,
         zoom: 14,
         zoomControl: false,
-        attributionControl: false,
+        attributionControl: false, // we add a styled one below
       });
 
       L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        "https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png",
         { maxZoom: 19, subdomains: "abcd" }
       ).addTo(mapRef.current);
+
+      // Minimal attribution (CartoDB requires it)
+      L.control.attribution({ position: "bottomright", prefix: false })
+        .addAttribution('© <a href="https://carto.com" style="color:#4a7c59">CARTO</a>')
+        .addTo(mapRef.current);
     });
 
     return () => {
@@ -198,7 +203,7 @@ export default function RouteMap({
   }, [boardingStop?.lat, boardingStop?.lng, destCoords?.lat, destCoords?.lng, walkingGeoJSON]);
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[#2e3d28]">
+    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[#1e2e1c]">
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <style>{`@keyframes sfping{0%{transform:scale(1);opacity:.35}70%{transform:scale(2.5);opacity:0}100%{transform:scale(1);opacity:0}}`}</style>
       <div ref={containerRef} className="w-full h-full" />

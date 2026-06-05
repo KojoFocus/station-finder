@@ -26,6 +26,7 @@ interface Msg {
   id: string; from: "bot" | "user"; type: MsgType; text?: string;
   timestamp: Date; result?: DirectionsResult; step?: NavStep;
   chips?: { label: string; action: string }[];
+  fare?: number | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -105,17 +106,31 @@ function MapPane({ result, userLoc, navigating, height }: {
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
-function RouteCard({ result }: { result: DirectionsResult }) {
+function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | null }) {
+  const totalMins = result.trotro
+    ? result.boardingStop.walkingMins + result.trotro.leg1.durationMins + (result.trotro.leg2?.durationMins ?? 0)
+    : result.boardingStop.walkingMins;
+
   return (
-    <div className="bg-surface-card border border-stroke rounded-2xl rounded-bl-sm overflow-hidden min-w-[240px] shadow-card"
+    <div className="rounded-2xl rounded-bl-sm overflow-hidden min-w-[240px] shadow-card border border-stroke"
          style={{ borderLeftColor: "var(--accent-interactive)", borderLeftWidth: 3 }}>
-      <div className="px-4 py-3.5 space-y-3">
+
+      {/* Summary header */}
+      <div className="bg-accent/15 px-4 py-2.5 flex items-center gap-2 border-b border-stroke">
+        <span className="text-accent text-[10px] font-bold uppercase tracking-widest">Route Found</span>
+        <div className="flex-1" />
+        {fare !== null && <span className="text-accent font-black text-base tabular-nums">₵{fare.toFixed(2)}</span>}
+        <span className="text-content-muted text-[10px]">~{totalMins} min total</span>
+      </div>
+
+      {/* Steps */}
+      <div className="bg-surface-card px-4 py-3.5 space-y-3">
         <div className="flex gap-2.5 items-start">
           <span className="text-base mt-0.5 shrink-0">🚶</span>
           <div>
             <p className="text-content-primary text-xs font-semibold">Walk to {result.boardingStop.name}</p>
             <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{result.boardingStop.description}</p>
-            <p className="text-content-muted text-xs mt-1">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
+            <p className="text-content-muted text-[11px] mt-1">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
           </div>
         </div>
         {result.trotro && (
@@ -130,7 +145,7 @@ function RouteCard({ result }: { result: DirectionsResult }) {
               <div>
                 <p className="text-content-primary text-xs font-semibold">{result.trotro.leg1.from} → {result.trotro.leg1.to}</p>
                 <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{result.trotro.leg1.whatToLookFor}</p>
-                <p className="text-content-muted text-xs mt-1">₵{result.trotro.leg1.fare.toFixed(2)} · ~{result.trotro.leg1.durationMins} min</p>
+                <p className="text-content-muted text-[11px] mt-1">₵{result.trotro.leg1.fare.toFixed(2)} · ~{result.trotro.leg1.durationMins} min</p>
               </div>
             </div>
             {result.trotro.leg2 && (
@@ -145,7 +160,7 @@ function RouteCard({ result }: { result: DirectionsResult }) {
                   <div>
                     <p className="text-content-primary text-xs font-semibold">{result.trotro.leg2.from} → {result.trotro.leg2.to}</p>
                     <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{result.trotro.leg2.whatToLookFor}</p>
-                    <p className="text-content-muted text-xs mt-1">₵{result.trotro.leg2.fare.toFixed(2)} · ~{result.trotro.leg2.durationMins} min</p>
+                    <p className="text-content-muted text-[11px] mt-1">₵{result.trotro.leg2.fare.toFixed(2)} · ~{result.trotro.leg2.durationMins} min</p>
                   </div>
                 </div>
               </>
@@ -352,8 +367,7 @@ export default function HomePage() {
       }
       setResult(data);
       const fare = data.trotro ? data.trotro.leg1.fare + (data.trotro.leg2?.fare ?? 0) : null;
-      addMsg({ from: "bot", type: "text", text: `Found a route!${fare ? ` Total fare: ₵${fare.toFixed(2)}` : ""}` });
-      addMsg({ from: "bot", type: "route", result: data });
+      addMsg({ from: "bot", type: "route", result: data, fare });
       addMsg({ from: "bot", type: "chips", chips: [
         { label: "Start Navigation →", action: "start_nav" },
         { label: "📤 Share on WhatsApp", action: "share_wa" },
@@ -498,7 +512,7 @@ export default function HomePage() {
   }, [startNavigation, router]);
 
   // ── Map height ─────────────────────────────────────────────────────────────
-  const mapH = navigating ? "46vh" : result ? "36vh" : "28vh";
+  const mapH = navigating ? "48vh" : result ? "38vh" : "32vh";
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -588,7 +602,7 @@ export default function HomePage() {
                   )}
                   {msg.type === "route" && msg.result && (
                     <>
-                      <RouteCard result={msg.result} />
+                      <RouteCard result={msg.result} fare={msg.fare ?? null} />
                       <button onClick={() => setReportingResult(msg.result!)}
                         className="text-[10px] text-content-disabled hover:text-content-muted mt-0.5 ml-1 active:opacity-60 transition-colors">
                         ⚠ Report wrong info
