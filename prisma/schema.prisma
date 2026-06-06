@@ -67,6 +67,17 @@ model SearchLog {
   createdAt   DateTime @default(now())
 }
 
+// Recent searches per device — powers the history chips in the chat UI
+model RecentSearch {
+  id          String   @id @default(uuid())
+  deviceId    String
+  origin      String   // full boarding stop name, e.g. "Teiman Junction"
+  destination String   // raw user input, e.g. "Nima"
+  createdAt   DateTime @default(now())
+
+  @@index([deviceId])
+}
+
 // User-submitted route quality reports (submitted from chat UI)
 model Report {
   id           String   @id @default(uuid())

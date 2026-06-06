@@ -249,6 +249,8 @@ export default function HomePage() {
   const [listening,       setListening]      = useState(false);
   const [hasSpeech,       setHasSpeech]      = useState(false);
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
+  const [deviceId,        setDeviceId]       = useState<string>("");
+  const [recentSearches,  setRecentSearches] = useState<{ id: string; origin: string; destination: string }[]>([]);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const bottomRef    = useRef<HTMLDivElement>(null);
@@ -264,6 +266,24 @@ export default function HomePage() {
   useEffect(() => { stepIdxRef.current = stepIdx; }, [stepIdx]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  // ── Device ID + recent search history ────────────────────────────────────
+  useEffect(() => {
+    const KEY = "sf_device_id";
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem(KEY, id);
+    }
+    setDeviceId(id);
+    fetch(`/api/history?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setRecentSearches(data); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Boot: deep link + speech detection ────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,6 +386,22 @@ export default function HomePage() {
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
 
+      // Save to history (fire-and-forget) + update local state immediately
+      if (deviceId) {
+        const entry = { id: Date.now().toString(), origin: data.boardingStop.name, destination };
+        setRecentSearches((prev) => {
+          const filtered = prev.filter(
+            (s) => !(s.origin.toLowerCase() === entry.origin.toLowerCase() && s.destination.toLowerCase() === destination.toLowerCase())
+          );
+          return [entry, ...filtered].slice(0, 5);
+        });
+        fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId, origin: data.boardingStop.name, destination }),
+        }).catch(() => {});
+      }
+
       // If boarding stop is more than 2km away, GPS is likely wrong — prompt correction
       if (!fromAddress && data.boardingStop.distanceM > 2000) {
         const km = (data.boardingStop.distanceM / 1000).toFixed(0);
@@ -382,7 +418,7 @@ export default function HomePage() {
       addMsg({ from: "bot", type: "text", text: "Connection error. Please try again." });
     }
     setProcessing(false);
-  }, [addMsg, removeTyping]);
+  }, [addMsg, removeTyping, deviceId]);
 
   // ── Send ───────────────────────────────────────────────────────────────────
   const send = useCallback(async (text: string) => {
@@ -641,6 +677,25 @@ export default function HomePage() {
           })}
           <div ref={bottomRef} />
         </div>
+
+        {/* Recent searches */}
+        {recentSearches.length > 0 && !input && (
+          <div className="shrink-0 px-4 pb-2 border-t border-stroke pt-2">
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">Recent</p>
+            <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+              {recentSearches.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => send(`From ${s.origin} to ${s.destination}`)}
+                  className="shrink-0 flex items-center gap-1.5 text-[11px] text-content-secondary border border-stroke bg-surface-card px-3 py-1.5 rounded-full active:scale-95 transition-all whitespace-nowrap"
+                >
+                  <span className="text-[10px]">🕐</span>
+                  {s.origin.split(" ")[0]} → {s.destination}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Input bar */}
         <div className="shrink-0 px-4 pb-safe pb-5 pt-3 flex gap-3 items-end border-t border-stroke">
