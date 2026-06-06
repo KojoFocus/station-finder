@@ -15,11 +15,14 @@ interface TrotroLeg {
   fare: number; durationMins: number; transitType: string;
 }
 interface DirectionsResult {
+  routeFound: boolean;
   destCoords:   { lat: number; lng: number };
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
+  alightingStop: { name: string; lat: number; lng: number } | null;
+  finalWalk: { distanceM: number; walkingMins: number } | null;
   walkingGeoJSON: object | null;
   steps: NavStep[];
-  trotro: { legs: TrotroLeg[] } | null;
+  trotro: { legs: TrotroLeg[]; totalMins: number; alternateNote: string | null } | null;
 }
 type MsgType = "text" | "typing" | "route" | "navstep" | "chips";
 interface Msg {
@@ -107,9 +110,8 @@ function MapPane({ result, userLoc, navigating, height }: {
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
 function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | null }) {
-  const legs = result.trotro?.legs ?? [];
-  const trotroMins = legs.reduce((s, l) => s + l.durationMins, 0);
-  const totalMins = result.boardingStop.walkingMins + trotroMins;
+  const legs      = result.trotro?.legs ?? [];
+  const totalMins = result.boardingStop.walkingMins + (result.trotro?.totalMins ?? 0) + (result.finalWalk?.walkingMins ?? 0);
 
   return (
     <div className="rounded-2xl rounded-bl-sm overflow-hidden min-w-[240px] shadow-card border border-stroke"
@@ -119,12 +121,14 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
       <div className="bg-accent/15 px-4 py-2.5 flex items-center gap-2 border-b border-stroke">
         <span className="text-accent text-[10px] font-bold uppercase tracking-widest">Route Found</span>
         <div className="flex-1" />
-        {fare !== null && <span className="text-accent font-black text-base tabular-nums">₵{fare.toFixed(2)}</span>}
-        <span className="text-content-muted text-[10px]">~{totalMins} min total</span>
+        {fare !== null && <span className="text-accent font-black text-base tabular-nums">~₵{fare.toFixed(2)}</span>}
+        <span className="text-content-muted text-[10px]">~{totalMins} min</span>
       </div>
 
       {/* Steps */}
       <div className="bg-surface-card px-4 py-3.5 space-y-3">
+
+        {/* Walk to boarding stop */}
         <div className="flex gap-2.5 items-start">
           <span className="text-base mt-0.5 shrink-0">🚶</span>
           <div>
@@ -133,6 +137,8 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
             <p className="text-content-muted text-[11px] mt-1">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
           </div>
         </div>
+
+        {/* Trotro legs */}
         {legs.map((leg, i) => (
           <div key={i}>
             <div className="flex items-center gap-2">
@@ -145,11 +151,39 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
               <div>
                 <p className="text-content-primary text-xs font-semibold">{leg.from} → {leg.to}</p>
                 <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{leg.whatToLookFor}</p>
-                <p className="text-content-muted text-[11px] mt-1">₵{leg.fare.toFixed(2)} · ~{leg.durationMins} min</p>
+                <p className="text-content-muted text-[11px] mt-1">~₵{leg.fare.toFixed(2)} · ~{leg.durationMins} min</p>
               </div>
             </div>
           </div>
         ))}
+
+        {/* Final walk to destination (when geocoded destination differs from alighting stop) */}
+        {result.finalWalk && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-stroke" />
+              <span className="text-content-disabled text-[10px]">ALIGHT + WALK</span>
+              <div className="flex-1 h-px bg-stroke" />
+            </div>
+            <div className="flex gap-2.5 items-start">
+              <span className="text-base mt-0.5 shrink-0">🚶</span>
+              <div>
+                <p className="text-content-primary text-xs font-semibold">Walk to your destination</p>
+                <p className="text-content-muted text-[11px] mt-1">{formatDist(result.finalWalk.distanceM)} · ~{result.finalWalk.walkingMins} min</p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Alternate route note */}
+        {result.trotro?.alternateNote && (
+          <p className="text-content-disabled text-[10px] pt-1 border-t border-stroke">
+            💡 {result.trotro.alternateNote}
+          </p>
+        )}
+
+        {/* Fare disclaimer */}
+        <p className="text-content-disabled text-[9px]">Fares are estimates — confirm with the mate.</p>
       </div>
     </div>
   );
@@ -379,11 +413,19 @@ export default function HomePage() {
       const { ok, data } = await fetchDirections(body);
       removeTyping();
       if (!ok) {
-        addMsg({ from: "bot", type: "text", text: "Hmm, I don't have that route yet 😅" });
-        addMsg({ from: "bot", type: "text", text: "If you're standing at a stop, help us map it and earn points 🙏" });
-        addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Help Map It →", action: "map_it" }] });
+        addMsg({ from: "bot", type: "text", text: `Couldn't find "${destination}" in Ghana.` });
+        addMsg({ from: "bot", type: "text", text: "Try a landmark or area name." });
         setProcessing(false); return;
       }
+
+      if (!data.routeFound) {
+        addMsg({ from: "bot", type: "text", text: `No trotro route found to **${destination}** yet.` });
+        addMsg({ from: "bot", type: "text", text: `Your nearest stop is **${data.boardingStop.name}**.` });
+        addMsg({ from: "bot", type: "text", text: "When you find the route — note where you board, where you alight, and the fare. Then Map It:" });
+        addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Map It →", action: "map_it" }] });
+        setProcessing(false); return;
+      }
+
       setResult(data);
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
@@ -548,17 +590,16 @@ export default function HomePage() {
     if (action === "share_wa") {
       const r = resultRef.current;
       if (!r) return;
-      const waLegs   = r.trotro?.legs ?? [];
-      const fare     = waLegs.length ? waLegs.reduce((s, l) => s + l.fare, 0).toFixed(2) : null;
-      const duration = waLegs.length ? waLegs.reduce((s, l) => s + l.durationMins, 0) : null;
+      const waLegs = r.trotro?.legs ?? [];
+      const fare   = waLegs.length ? waLegs.reduce((s, l) => s + l.fare, 0).toFixed(2) : null;
       const text = [
         `🚐 *Station Finder Route*`, ``,
         `🚶 Walk to *${r.boardingStop.name}* (~${r.boardingStop.walkingMins} min)`,
         `📍 ${r.boardingStop.description}`,
-        waLegs.length ? `` : null,
+        waLegs[0] ? `` : null,
         waLegs[0] ? `🚐 Board: *${waLegs[0].whatToLookFor}*` : null,
         waLegs[0] ? `➡️ ${waLegs[0].from} → ${waLegs[waLegs.length - 1].to}` : null,
-        fare      ? `💰 Fare: *₵${fare}*${duration ? ` · ~${duration} min` : ""}` : null,
+        fare      ? `💰 Fare: *~₵${fare}* (estimate)` : null,
         ``, `Find yours 👉 https://stationfinder.vercel.app`,
       ].filter((l) => l !== null).join("\n");
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
