@@ -52,6 +52,21 @@ function formatDist(m: number) {
   return `${(m / 1000).toFixed(1)} km`;
 }
 
+function fareRange(fare: number): string {
+  const lo = Math.floor(fare * 0.85);
+  const hi = Math.ceil(fare * 1.2);
+  if (lo === hi) return `~₵${lo}`;
+  return `~₵${lo}–${hi}`;
+}
+
+function timeContext(): string | null {
+  const h = new Date().getHours();
+  if (h >= 6  && h < 9)  return "🚦 Rush hour — expect longer waits and full trotros.";
+  if (h >= 16 && h < 19) return "🚦 Evening rush — trotros fill up fast right now.";
+  if (h >= 21 || h < 5)  return "🌙 Late night — trotros may be infrequent. Confirm before heading out.";
+  return null;
+}
+
 function formatTime(d: Date) {
   return d.toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
 }
@@ -121,7 +136,7 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
       <div className="bg-accent/15 px-4 py-2.5 flex items-center gap-2 border-b border-stroke">
         <span className="text-accent text-[10px] font-bold uppercase tracking-widest">Route Found</span>
         <div className="flex-1" />
-        {fare !== null && <span className="text-accent font-black text-base tabular-nums">~₵{fare.toFixed(2)}</span>}
+        {fare !== null && <span className="text-accent font-black text-base tabular-nums">{fareRange(fare)}</span>}
         <span className="text-content-muted text-[10px]">~{totalMins} min</span>
       </div>
 
@@ -151,7 +166,7 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
               <div>
                 <p className="text-content-primary text-xs font-semibold">{leg.from} → {leg.to}</p>
                 <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{leg.whatToLookFor}</p>
-                <p className="text-content-muted text-[11px] mt-1">~₵{leg.fare.toFixed(2)} · ~{leg.durationMins} min</p>
+                <p className="text-content-muted text-[11px] mt-1">{fareRange(leg.fare)} · ~{leg.durationMins} min</p>
               </div>
             </div>
           </div>
@@ -285,6 +300,10 @@ export default function HomePage() {
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
   const [deviceId,        setDeviceId]       = useState<string>("");
   const [recentSearches,  setRecentSearches] = useState<{ id: string; origin: string; destination: string }[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [installPrompt,   setInstallPrompt]  = useState<any>(null);
+  const [showInstall,     setShowInstall]    = useState(false);
+  const [starred,         setStarred]        = useState<{ origin: string; destination: string }[]>([]);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const bottomRef    = useRef<HTMLDivElement>(null);
@@ -316,6 +335,11 @@ export default function HomePage() {
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setRecentSearches(data); })
       .catch(() => {});
+    // Load starred routes from localStorage
+    try {
+      const saved = JSON.parse(localStorage.getItem("sf_starred") ?? "[]");
+      if (Array.isArray(saved)) setStarred(saved);
+    } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -328,6 +352,12 @@ export default function HomePage() {
       window.history.replaceState({}, "", window.location.pathname);
     }
     setHasSpeech("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+    // Capture PWA install prompt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   // ── Message helpers ────────────────────────────────────────────────────────
@@ -367,10 +397,20 @@ export default function HomePage() {
       return;
     }
 
+    const EXAMPLE_CHIPS = [
+      { label: "Madina", action: "dest:Madina" },
+      { label: "Circle", action: "dest:Circle" },
+      { label: "Kaneshie", action: "dest:Kaneshie" },
+      { label: "Legon", action: "dest:Legon" },
+    ];
+
     const askManually = () => {
       addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋" });
       addMsg({ from: "bot", type: "text", text: "Where are you going?" });
+      const ctx = timeContext();
+      if (ctx) addMsg({ from: "bot", type: "text", text: ctx });
       addMsg({ from: "bot", type: "text", text: "e.g. *Teiman to Kaneshie*" });
+      addMsg({ from: "bot", type: "chips", chips: EXAMPLE_CHIPS });
     };
 
     const onGpsDenied = () => {
@@ -389,6 +429,9 @@ export default function HomePage() {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
         addMsg({ from: "bot", type: "text", text: "Got you 📍 Where are you going?" });
+        const ctx = timeContext();
+        if (ctx) addMsg({ from: "bot", type: "text", text: ctx });
+        addMsg({ from: "bot", type: "chips", chips: EXAMPLE_CHIPS });
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }
@@ -430,6 +473,11 @@ export default function HomePage() {
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
 
+      // Show install prompt after first successful route (once only)
+      if (installPrompt && !localStorage.getItem("sf_install_dismissed")) {
+        setShowInstall(true);
+      }
+
       // Save to history (fire-and-forget) + update local state immediately
       if (deviceId) {
         const entry = { id: Date.now().toString(), origin: data.boardingStop.name, destination };
@@ -451,6 +499,10 @@ export default function HomePage() {
         addMsg({ from: "bot", type: "text", text: `⚠️ That starting point looks far — GPS might be off.` });
         addMsg({ from: "bot", type: "text", text: `Try: *"From Teiman to ${destination}"*` });
       } else {
+        // Walk distance warning if boarding stop is more than 10 min away
+        if (data.boardingStop.walkingMins > 10) {
+          addMsg({ from: "bot", type: "text", text: `🚶 That's a ${data.boardingStop.walkingMins}-min walk to the stop. You may want to find a closer one.` });
+        }
         addMsg({ from: "bot", type: "chips", chips: [
           { label: "Start Navigation →", action: "start_nav" },
           { label: "📤 Share on WhatsApp", action: "share_wa" },
@@ -526,7 +578,7 @@ export default function HomePage() {
         setNavigating(false); navigator.geolocation.clearWatch(id); setWatchId(null);
         const leg = res.trotro?.legs[0];
         addMsg({ from: "bot", type: "text",
-          text: `You're at ${res.boardingStop.name}! 🚐\n\n${leg ? `${leg.whatToLookFor}\n\n₵${leg.fare.toFixed(2)} · ~${leg.durationMins} min to ${leg.to}` : "Board here."}` });
+          text: `You're at ${res.boardingStop.name}! 🚐\n\n${leg ? `${leg.whatToLookFor}\n\n${fareRange(leg.fare)} · ~${leg.durationMins} min to ${leg.to}` : "Board here."}` });
         if (voiceOnRef.current) speak(`You've arrived at ${res.boardingStop.name}. ${leg?.whatToLookFor ?? ""}`);
         return;
       }
@@ -541,6 +593,17 @@ export default function HomePage() {
     }, (e) => console.warn("GPS:", e), { enableHighAccuracy: true, maximumAge: 1500 });
     setWatchId(id);
   }, [addMsg]);
+
+  const toggleStar = useCallback((origin: string, destination: string) => {
+    setStarred((prev) => {
+      const exists = prev.some((s) => s.origin === origin && s.destination === destination);
+      const next = exists
+        ? prev.filter((s) => !(s.origin === origin && s.destination === destination))
+        : [{ origin, destination }, ...prev].slice(0, 5);
+      localStorage.setItem("sf_starred", JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const stopNavigation = useCallback(() => {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); setWatchId(null); }
@@ -575,6 +638,7 @@ export default function HomePage() {
 
   // ── Chip actions ───────────────────────────────────────────────────────────
   const onChip = useCallback((action: string) => {
+    if (action.startsWith("dest:")) { send(action.slice(5)); return; }
     if (action === "start_nav") startNavigation();
     if (action === "map_it")   router.push("/map-it");
     if (action === "retry_gps") {
@@ -653,26 +717,46 @@ export default function HomePage() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
           {/* Welcome back card — shown on fresh chat when history exists */}
-          {msgs.filter(m => m.from === "user").length === 0 && recentSearches.length > 0 && (
+          {msgs.filter(m => m.from === "user").length === 0 && (recentSearches.length > 0 || starred.length > 0) && (
             <div className="flex flex-col gap-3">
               <p className="text-content-secondary text-sm font-medium">Akwaaba back 👋</p>
-              <div className="bg-surface-card border border-stroke rounded-2xl overflow-hidden">
-                <div className="px-4 pt-3.5 pb-1">
-                  <p className="text-content-disabled text-[9px] uppercase tracking-widest">Your last route</p>
-                  <p className="text-content-primary font-semibold text-sm mt-1">
-                    {recentSearches[0].origin.split(" ")[0]}
-                    <span className="text-content-muted font-normal"> → </span>
-                    {recentSearches[0].destination.charAt(0).toUpperCase() + recentSearches[0].destination.slice(1)}
-                  </p>
+
+              {/* Starred routes */}
+              {starred.length > 0 && (
+                <div className="bg-surface-card border border-stroke rounded-2xl px-4 py-3 flex flex-col gap-2">
+                  <p className="text-content-disabled text-[9px] uppercase tracking-widest">★ Saved routes</p>
+                  {starred.map((s, i) => (
+                    <button key={i}
+                      onClick={() => send(`From ${s.origin} to ${s.destination}`)}
+                      disabled={processing}
+                      className="text-left text-xs text-content-primary active:opacity-60 disabled:opacity-40"
+                    >
+                      {s.origin.split(" ")[0]} → {s.destination.charAt(0).toUpperCase() + s.destination.slice(1)}
+                    </button>
+                  ))}
                 </div>
-                <button
-                  onClick={() => send(`From ${recentSearches[0].origin} to ${recentSearches[0].destination}`)}
-                  disabled={processing}
-                  className="w-full px-4 py-3 text-left text-xs text-accent font-semibold border-t border-stroke active:bg-accent/10 transition-colors disabled:opacity-40"
-                >
-                  Go again →
-                </button>
-              </div>
+              )}
+
+              {/* Last route */}
+              {recentSearches.length > 0 && (
+                <div className="bg-surface-card border border-stroke rounded-2xl overflow-hidden">
+                  <div className="px-4 pt-3.5 pb-1">
+                    <p className="text-content-disabled text-[9px] uppercase tracking-widest">Your last route</p>
+                    <p className="text-content-primary font-semibold text-sm mt-1">
+                      {recentSearches[0].origin.split(" ")[0]}
+                      <span className="text-content-muted font-normal"> → </span>
+                      {recentSearches[0].destination.charAt(0).toUpperCase() + recentSearches[0].destination.slice(1)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => send(`From ${recentSearches[0].origin} to ${recentSearches[0].destination}`)}
+                    disabled={processing}
+                    className="w-full px-4 py-3 text-left text-xs text-accent font-semibold border-t border-stroke active:bg-accent/10 transition-colors disabled:opacity-40"
+                  >
+                    Go again →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -720,15 +804,30 @@ export default function HomePage() {
                       {msg.text}
                     </div>
                   )}
-                  {msg.type === "route" && msg.result && (
-                    <>
-                      <RouteCard result={msg.result} fare={msg.fare ?? null} />
-                      <button onClick={() => setReportingResult(msg.result!)}
-                        className="text-[10px] text-content-disabled hover:text-content-muted mt-0.5 ml-1 active:opacity-60 transition-colors">
-                        ⚠ Report wrong info
-                      </button>
-                    </>
-                  )}
+                  {msg.type === "route" && msg.result && (() => {
+                    const r = msg.result!;
+                    const legs = r.trotro?.legs ?? [];
+                    const destLabel = legs[legs.length - 1]?.to ?? "destination";
+                    const isS = starred.some(s => s.origin === r.boardingStop.name && s.destination === destLabel);
+                    return (
+                      <>
+                        <RouteCard result={r} fare={msg.fare ?? null} />
+                        <div className="flex items-center gap-3 mt-0.5 ml-1">
+                          <button
+                            onClick={() => toggleStar(r.boardingStop.name, destLabel)}
+                            className={`text-[10px] active:opacity-60 transition-colors ${isS ? "text-[#f59e0b]" : "text-content-disabled hover:text-content-muted"}`}
+                          >
+                            {isS ? "★ Saved" : "☆ Save route"}
+                          </button>
+                          <span className="text-content-disabled text-[10px]">·</span>
+                          <button onClick={() => setReportingResult(r)}
+                            className="text-[10px] text-content-disabled hover:text-content-muted active:opacity-60 transition-colors">
+                            ⚠ Report
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                   {msg.type === "navstep" && msg.step && (
                     <div className="bg-accent rounded-2xl rounded-bl-sm px-4 py-3.5 flex items-center gap-3.5 min-w-[200px] shadow-accent-sm">
                       <span className="text-2xl font-bold text-white leading-none shrink-0">{msg.step.icon}</span>
@@ -787,6 +886,29 @@ export default function HomePage() {
       </div>
 
       {reportingResult && <ReportModal result={reportingResult} onClose={() => setReportingResult(null)} />}
+
+      {/* PWA install banner */}
+      {showInstall && installPrompt && (
+        <div className="fixed bottom-24 left-4 right-4 z-50 bg-surface-card border border-accent/30 rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-xl">
+          <span className="text-2xl shrink-0">🚐</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-content-primary text-xs font-semibold">Add to Home Screen</p>
+            <p className="text-content-muted text-[10px]">Faster access — works like an app</p>
+          </div>
+          <button
+            onClick={() => { installPrompt.prompt(); setShowInstall(false); localStorage.setItem("sf_install_dismissed", "1"); }}
+            className="shrink-0 text-xs text-white bg-accent px-3 py-1.5 rounded-full font-semibold active:scale-95"
+          >
+            Install
+          </button>
+          <button
+            onClick={() => { setShowInstall(false); localStorage.setItem("sf_install_dismissed", "1"); }}
+            className="shrink-0 text-content-muted text-xs active:opacity-60"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
