@@ -334,30 +334,32 @@ export default function HomePage() {
     }
 
     const askManually = () => {
-      addMsg({ from: "bot", type: "text",
-        text: "Akwaaba! 👋 Where are you headed? Just tell me your starting point too — e.g. *Teiman to Kaneshie*" });
+      addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋" });
+      addMsg({ from: "bot", type: "text", text: "Where are you going?" });
+      addMsg({ from: "bot", type: "text", text: "e.g. *Teiman to Kaneshie*" });
     };
 
     const onGpsDenied = () => {
-      setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
-      addMsg({ from: "bot", type: "text",
-        text: "Akwaaba! 👋 Location access is off.\n\nTo share your location:\n• Android: tap the 🔒 icon in your browser bar → Site settings → Location → Allow\n• iPhone: Settings → Safari → Location → Allow\n\nOr just tell me where you are — e.g. *I'm at Teiman, going to Kaneshie*" });
+      setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
+      addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋" });
+      addMsg({ from: "bot", type: "text", text: "Location is off. Just tell me where you are." });
+      addMsg({ from: "bot", type: "text", text: "e.g. *I'm at Teiman, going to Kaneshie*" });
       addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] });
     };
 
     if (!navigator.geolocation) { askManually(); return; }
 
-    addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋 Getting your location…" });
+    addMsg({ from: "bot", type: "text", text: "📍 Getting your location…" });
     navigator.geolocation.getCurrentPosition(
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
-        setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
-        addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?\n\n⚠️ If the route shows the wrong starting point (GPS can be inaccurate on mobile), just type:\n*From Teiman to [destination]*" });
+        setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
+        addMsg({ from: "bot", type: "text", text: "Got you 📍 Where are you going?" });
       },
       (err) => {
-        if (err.code === 1) { onGpsDenied(); }          // user denied
+        if (err.code === 1) { onGpsDenied(); }
         else {
-          setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
+          setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
           askManually();
         }
       },
@@ -377,8 +379,8 @@ export default function HomePage() {
       const { ok, data } = await fetchDirections(body);
       removeTyping();
       if (!ok) {
-        addMsg({ from: "bot", type: "text",
-          text: `Chale, I don't have that route in my database yet 😅\n\nIf you find yourself at a trotro stop near there, please help me put it on the map — you'll earn points and help every commuter after you! 🙏` });
+        addMsg({ from: "bot", type: "text", text: "Hmm, I don't have that route yet 😅" });
+        addMsg({ from: "bot", type: "text", text: "If you're standing at a stop, help us map it and earn points 🙏" });
         addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Help Map It →", action: "map_it" }] });
         setProcessing(false); return;
       }
@@ -404,9 +406,8 @@ export default function HomePage() {
 
       // If boarding stop is more than 2km away, GPS is likely wrong — prompt correction
       if (!fromAddress && data.boardingStop.distanceM > 2000) {
-        const km = (data.boardingStop.distanceM / 1000).toFixed(0);
-        addMsg({ from: "bot", type: "text",
-          text: `⚠️ Your GPS placed you ${km} km from **${data.boardingStop.name}** — that seems far. If you're actually in Accra, type your real location:\n\n*"From Teiman to ${destination}"*\nor\n*"I'm at Teiman"* then resend your destination.` });
+        addMsg({ from: "bot", type: "text", text: `⚠️ That starting point looks far — GPS might be off.` });
+        addMsg({ from: "bot", type: "text", text: `Try: *"From Teiman to ${destination}"*` });
       } else {
         addMsg({ from: "bot", type: "chips", chips: [
           { label: "Start Navigation →", action: "start_nav" },
@@ -432,7 +433,7 @@ export default function HomePage() {
 
     if (parsed.locatedAt) {
       setKnownOrigin(parsed.locatedAt);
-      addMsg({ from: "bot", type: "text", text: `📍 Got it! You're at **${parsed.locatedAt}**. Where would you like to go?` });
+      addMsg({ from: "bot", type: "text", text: `📍 Got it — **${parsed.locatedAt}**. Where are you going?` });
       return;
     }
 
@@ -454,7 +455,8 @@ export default function HomePage() {
     else if (knownOrigin)  await search(destination, knownOrigin);
     else {
       setPendingDest(destination);
-      addMsg({ from: "bot", type: "text", text: "Where are you coming from? (e.g. Teiman, Oyarifa)" });
+      addMsg({ from: "bot", type: "text", text: "Where are you coming from?" });
+      addMsg({ from: "bot", type: "text", text: "e.g. *Teiman* or *Oyarifa*" });
     }
   }, [addMsg, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin]);
 
@@ -470,7 +472,7 @@ export default function HomePage() {
     if (!resultRef.current?.steps.length) return;
     setNavigating(true); setStepIdx(0);
     const first = resultRef.current.steps[0];
-    addMsg({ from: "bot", type: "text", text: "Let's go! 🚶 Follow the steps:" });
+    addMsg({ from: "bot", type: "text", text: "Let's go 🚶" });
     addMsg({ from: "bot", type: "navstep", step: first });
     if (voiceOnRef.current) speak(first.instruction);
     const id = navigator.geolocation.watchPosition((p) => {
@@ -501,7 +503,7 @@ export default function HomePage() {
   const stopNavigation = useCallback(() => {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); setWatchId(null); }
     setNavigating(false);
-    addMsg({ from: "bot", type: "text", text: "Navigation stopped. Where would you like to go next?" });
+    addMsg({ from: "bot", type: "text", text: "Stopped. Where next?" });
   }, [watchId, addMsg]);
 
   // ── Voice input ────────────────────────────────────────────────────────────
@@ -539,7 +541,7 @@ export default function HomePage() {
           setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
           addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?" });
         },
-        () => addMsg({ from: "bot", type: "text", text: "Still blocked — please enable location in your browser settings, then refresh." }),
+        () => addMsg({ from: "bot", type: "text", text: "Still blocked. Enable location in browser settings and refresh." }),
         { timeout: 10000, enableHighAccuracy: true }
       );
     }
