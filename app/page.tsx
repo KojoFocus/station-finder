@@ -366,6 +366,25 @@ export default function HomePage() {
   const removeTyping = useCallback(() =>
     setMsgs(p => p.filter(m => m.type !== "typing")), []);
 
+  // ── botSay: sequential bot messages with natural typing pauses ────────────
+  // Each text message shows typing dots for a duration based on length,
+  // then the message appears. Chips appear after a short gap, no dots.
+  const botSay = useCallback(async (...msgs: Omit<Msg, "id" | "timestamp" | "from">[]) => {
+    for (const m of msgs) {
+      if (m.type === "text") {
+        setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
+        const ms = Math.min(1100, 380 + ((m.text?.length ?? 0) * 11));
+        await new Promise<void>(r => setTimeout(r, ms));
+        setMsgs(p => p.filter(x => x.type !== "typing"));
+      } else {
+        await new Promise<void>(r => setTimeout(r, 120));
+      }
+      setMsgs(p => [...p, { id: uid(), from: "bot", timestamp: new Date(), ...m } as Msg]);
+      if (m.type !== "chips") await new Promise<void>(r => setTimeout(r, 80));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Persist chat to sessionStorage ────────────────────────────────────────
   useEffect(() => {
     if (msgs.length === 0) return;
@@ -405,20 +424,24 @@ export default function HomePage() {
     ];
 
     const askManually = () => {
-      addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋" });
-      addMsg({ from: "bot", type: "text", text: "Where are you going?" });
       const ctx = timeContext();
-      if (ctx) addMsg({ from: "bot", type: "text", text: ctx });
-      addMsg({ from: "bot", type: "text", text: "e.g. *Teiman to Kaneshie*" });
-      addMsg({ from: "bot", type: "chips", chips: EXAMPLE_CHIPS });
+      botSay(
+        { type: "text", text: "Akwaaba! 👋" },
+        { type: "text", text: "Where are you going?" },
+        ...(ctx ? [{ type: "text" as const, text: ctx }] : []),
+        { type: "text", text: "e.g. *Teiman to Kaneshie*" },
+        { type: "chips", chips: EXAMPLE_CHIPS },
+      );
     };
 
     const onGpsDenied = () => {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
-      addMsg({ from: "bot", type: "text", text: "Akwaaba! 👋" });
-      addMsg({ from: "bot", type: "text", text: "Location is off. Just tell me where you are." });
-      addMsg({ from: "bot", type: "text", text: "e.g. *I'm at Teiman, going to Kaneshie*" });
-      addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] });
+      botSay(
+        { type: "text", text: "Akwaaba! 👋" },
+        { type: "text", text: "Location is off. Just tell me where you are." },
+        { type: "text", text: "e.g. *I'm at Teiman, going to Kaneshie*" },
+        { type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] },
+      );
     };
 
     if (!navigator.geolocation) { askManually(); return; }
@@ -428,10 +451,12 @@ export default function HomePage() {
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
-        addMsg({ from: "bot", type: "text", text: "Got you 📍 Where are you going?" });
         const ctx = timeContext();
-        if (ctx) addMsg({ from: "bot", type: "text", text: ctx });
-        addMsg({ from: "bot", type: "chips", chips: EXAMPLE_CHIPS });
+        botSay(
+          { type: "text", text: "Got you 📍 Where are you going?" },
+          ...(ctx ? [{ type: "text" as const, text: ctx }] : []),
+          { type: "chips", chips: EXAMPLE_CHIPS },
+        );
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }
@@ -456,16 +481,20 @@ export default function HomePage() {
       const { ok, data } = await fetchDirections(body);
       removeTyping();
       if (!ok) {
-        addMsg({ from: "bot", type: "text", text: `Couldn't find "${destination}" in Ghana.` });
-        addMsg({ from: "bot", type: "text", text: "Try a landmark or area name." });
+        await botSay(
+          { type: "text", text: `Couldn't find "${destination}" in Ghana.` },
+          { type: "text", text: "Try a landmark or area name." },
+        );
         setProcessing(false); return;
       }
 
       if (!data.routeFound) {
-        addMsg({ from: "bot", type: "text", text: `No trotro route found to **${destination}** yet.` });
-        addMsg({ from: "bot", type: "text", text: `Your nearest stop is **${data.boardingStop.name}**.` });
-        addMsg({ from: "bot", type: "text", text: "When you find the route — note where you board, where you alight, and the fare. Then Map It:" });
-        addMsg({ from: "bot", type: "chips", chips: [{ label: "📍 Map It →", action: "map_it" }] });
+        await botSay(
+          { type: "text", text: `No trotro route to **${destination}** yet.` },
+          { type: "text", text: `Your nearest stop is **${data.boardingStop.name}**.` },
+          { type: "text", text: "Find the trotro, note where you board, alight, and the fare — then Map It:" },
+          { type: "chips", chips: [{ label: "📍 Map It →", action: "map_it" }] },
+        );
         setProcessing(false); return;
       }
 
@@ -494,26 +523,29 @@ export default function HomePage() {
         }).catch(() => {});
       }
 
-      // If boarding stop is more than 2km away, GPS is likely wrong — prompt correction
+      // Follow-up messages after route card
       if (!fromAddress && data.boardingStop.distanceM > 2000) {
-        addMsg({ from: "bot", type: "text", text: `⚠️ That starting point looks far — GPS might be off.` });
-        addMsg({ from: "bot", type: "text", text: `Try: *"From Teiman to ${destination}"*` });
+        await botSay(
+          { type: "text", text: `⚠️ That start looks far — GPS might be off.` },
+          { type: "text", text: `Try: *"From Teiman to ${destination}"*` },
+        );
       } else {
-        // Walk distance warning if boarding stop is more than 10 min away
+        const extras: Omit<Msg, "id" | "timestamp" | "from">[] = [];
         if (data.boardingStop.walkingMins > 10) {
-          addMsg({ from: "bot", type: "text", text: `🚶 That's a ${data.boardingStop.walkingMins}-min walk to the stop. You may want to find a closer one.` });
+          extras.push({ type: "text", text: `🚶 That's a ${data.boardingStop.walkingMins}-min walk to the stop.` });
         }
-        addMsg({ from: "bot", type: "chips", chips: [
+        extras.push({ type: "chips", chips: [
           { label: "Start Navigation →", action: "start_nav" },
           { label: "📤 Share on WhatsApp", action: "share_wa" },
         ]});
+        await botSay(...extras);
       }
     } catch {
       removeTyping();
-      addMsg({ from: "bot", type: "text", text: "Connection error. Please try again." });
+      await botSay({ type: "text", text: "Connection error. Please try again." });
     }
     setProcessing(false);
-  }, [addMsg, removeTyping, deviceId]);
+  }, [addMsg, removeTyping, botSay, deviceId]);
 
   // ── Send ───────────────────────────────────────────────────────────────────
   const send = useCallback(async (text: string) => {
@@ -527,7 +559,7 @@ export default function HomePage() {
 
     if (parsed.locatedAt) {
       setKnownOrigin(parsed.locatedAt);
-      addMsg({ from: "bot", type: "text", text: `📍 Got it — **${parsed.locatedAt}**. Where are you going?` });
+      await botSay({ type: "text", text: `📍 Got it — **${parsed.locatedAt}**. Where are you going?` });
       return;
     }
 
@@ -549,10 +581,12 @@ export default function HomePage() {
     else if (knownOrigin)  await search(destination, knownOrigin);
     else {
       setPendingDest(destination);
-      addMsg({ from: "bot", type: "text", text: "Where are you coming from?" });
-      addMsg({ from: "bot", type: "text", text: "e.g. *Teiman* or *Oyarifa*" });
+      await botSay(
+        { type: "text", text: "Where are you coming from?" },
+        { type: "text", text: "e.g. *Teiman* or *Oyarifa*" },
+      );
     }
-  }, [addMsg, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin]);
+  }, [addMsg, botSay, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin]);
 
   // ── Deep link trigger (after send is defined) ─────────────────────────────
   useEffect(() => {
@@ -562,11 +596,11 @@ export default function HomePage() {
   }, [deepLinkDest, msgs.length, processing, send]);
 
   // ── Navigation ─────────────────────────────────────────────────────────────
-  const startNavigation = useCallback(() => {
+  const startNavigation = useCallback(async () => {
     if (!resultRef.current?.steps.length) return;
     setNavigating(true); setStepIdx(0);
     const first = resultRef.current.steps[0];
-    addMsg({ from: "bot", type: "text", text: "Let's go 🚶" });
+    await botSay({ type: "text", text: "Let's go 🚶" });
     addMsg({ from: "bot", type: "navstep", step: first });
     if (voiceOnRef.current) speak(first.instruction);
     const id = navigator.geolocation.watchPosition((p) => {
@@ -577,8 +611,10 @@ export default function HomePage() {
       if (haversineM(pos, { lat: res.boardingStop.lat, lng: res.boardingStop.lng }) < 25) {
         setNavigating(false); navigator.geolocation.clearWatch(id); setWatchId(null);
         const leg = res.trotro?.legs[0];
-        addMsg({ from: "bot", type: "text",
-          text: `You're at ${res.boardingStop.name}! 🚐\n\n${leg ? `${leg.whatToLookFor}\n\n${fareRange(leg.fare)} · ~${leg.durationMins} min to ${leg.to}` : "Board here."}` });
+        botSay(
+          { type: "text", text: `You're at **${res.boardingStop.name}**! 🚐` },
+          ...(leg ? [{ type: "text" as const, text: `${leg.whatToLookFor}\n\n${fareRange(leg.fare)} · ~${leg.durationMins} min to **${leg.to}**` }] : [{ type: "text" as const, text: "Board here." }]),
+        );
         if (voiceOnRef.current) speak(`You've arrived at ${res.boardingStop.name}. ${leg?.whatToLookFor ?? ""}`);
         return;
       }
@@ -592,7 +628,7 @@ export default function HomePage() {
       }
     }, (e) => console.warn("GPS:", e), { enableHighAccuracy: true, maximumAge: 1500 });
     setWatchId(id);
-  }, [addMsg]);
+  }, [botSay, addMsg]);
 
   const toggleStar = useCallback((origin: string, destination: string) => {
     setStarred((prev) => {
@@ -608,8 +644,8 @@ export default function HomePage() {
   const stopNavigation = useCallback(() => {
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); setWatchId(null); }
     setNavigating(false);
-    addMsg({ from: "bot", type: "text", text: "Stopped. Where next?" });
-  }, [watchId, addMsg]);
+    botSay({ type: "text", text: "Stopped. Where next?" });
+  }, [watchId, botSay]);
 
   // ── Voice input ────────────────────────────────────────────────────────────
   const toggleVoiceInput = useCallback(() => {
@@ -645,9 +681,9 @@ export default function HomePage() {
       navigator.geolocation?.getCurrentPosition(
         (p) => {
           setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
-          addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?" });
+          botSay({ type: "text", text: "Got your location 📍 Where are you headed?" });
         },
-        () => addMsg({ from: "bot", type: "text", text: "Still blocked. Enable location in browser settings and refresh." }),
+        () => botSay({ type: "text", text: "Still blocked. Enable location in browser settings and refresh." }),
         { timeout: 10000, enableHighAccuracy: true }
       );
     }
