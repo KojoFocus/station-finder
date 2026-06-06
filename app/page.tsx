@@ -332,7 +332,7 @@ export default function HomePage() {
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "Akwaaba! 👋 Getting your location…"));
-        addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?" });
+        addMsg({ from: "bot", type: "text", text: "Got your location 📍 Where are you headed?\n\n⚠️ If the route shows the wrong starting point (GPS can be inaccurate on mobile), just type:\n*From Teiman to [destination]*" });
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }          // user denied
@@ -365,10 +365,18 @@ export default function HomePage() {
       setResult(data);
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
-      addMsg({ from: "bot", type: "chips", chips: [
-        { label: "Start Navigation →", action: "start_nav" },
-        { label: "📤 Share on WhatsApp", action: "share_wa" },
-      ]});
+
+      // If boarding stop is more than 2km away, GPS is likely wrong — prompt correction
+      if (!fromAddress && data.boardingStop.distanceM > 2000) {
+        const km = (data.boardingStop.distanceM / 1000).toFixed(0);
+        addMsg({ from: "bot", type: "text",
+          text: `⚠️ Your GPS placed you ${km} km from **${data.boardingStop.name}** — that seems far. If you're actually in Accra, type your real location:\n\n*"From Teiman to ${destination}"*\nor\n*"I'm at Teiman"* then resend your destination.` });
+      } else {
+        addMsg({ from: "bot", type: "chips", chips: [
+          { label: "Start Navigation →", action: "start_nav" },
+          { label: "📤 Share on WhatsApp", action: "share_wa" },
+        ]});
+      }
     } catch {
       removeTyping();
       addMsg({ from: "bot", type: "text", text: "Connection error. Please try again." });
