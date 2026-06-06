@@ -555,11 +555,9 @@ export default function HomePage() {
     ];
 
     const askManually = () => {
-      const ctx = timeContext();
       botSay(
         { type: "text", text: "Akwaaba! 👋" },
         { type: "text", text: "Where are you going?" },
-        ...(ctx ? [{ type: "text" as const, text: ctx }] : []),
         { type: "text", text: "e.g. *Teiman to Kaneshie*" },
         { type: "chips", chips: EXAMPLE_CHIPS },
       );
@@ -582,10 +580,8 @@ export default function HomePage() {
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
-        const ctx = timeContext();
         botSay(
           { type: "text", text: "Got you 📍 Where are you going?" },
-          ...(ctx ? [{ type: "text" as const, text: ctx }] : []),
           { type: "chips", chips: EXAMPLE_CHIPS },
         );
       },
