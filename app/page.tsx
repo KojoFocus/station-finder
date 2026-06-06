@@ -678,14 +678,7 @@ export default function HomePage() {
         }
         extras.push({ type: "chips", chips: [
           { label: "Start Navigation →", action: "start_nav" },
-          { label: "📤 Share on WhatsApp", action: "share_wa" },
         ]});
-        // Save as Home/Work shortcuts — only show if not already saved
-        const destLabel = data.trotro?.legs?.at(-1)?.to ?? destination;
-        const saveChips: { label: string; action: string }[] = [];
-        if (!homePlace || homePlace.name !== destLabel) saveChips.push({ label: "🏠 Save as Home", action: `save_home:${destLabel}` });
-        if (!workPlace || workPlace.name !== destLabel) saveChips.push({ label: "💼 Save as Work", action: `save_work:${destLabel}` });
-        if (saveChips.length > 0) extras.push({ type: "chips", chips: saveChips });
         await botSay(...extras);
       }
     } catch {
