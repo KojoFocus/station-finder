@@ -936,11 +936,10 @@ export default function HomePage() {
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between gap-2 px-4 pt-4 pb-3 border-b border-stroke">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-sm shadow-accent shrink-0">🚐</div>
-          <div className="min-w-0">
-            <p className="text-content-primary text-sm font-semibold leading-tight">Station Finder</p>
-            <p className="text-[10px] text-content-muted leading-tight">{navigating ? "● Navigating" : "● Accra Pilot"}</p>
-          </div>
+          <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-sm shrink-0">🚐</div>
+          <p className="text-content-primary text-sm font-semibold leading-none">
+            Station Finder <span className="text-[10px] text-content-muted font-normal">{navigating ? "● Navigating" : "● Accra Pilot"}</span>
+          </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {navigating && (
@@ -1182,7 +1181,7 @@ export default function HomePage() {
             </button>
           )}
           <button onClick={() => send(input)} disabled={!input.trim() || processing}
-            className="shrink-0 w-11 h-11 rounded-full bg-accent flex items-center justify-center text-white shadow-accent disabled:opacity-30 active:scale-90 transition-all">
+            className="shrink-0 w-11 h-11 rounded-full bg-accent flex items-center justify-center text-white disabled:opacity-30 active:scale-90 transition-all">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
             </svg>

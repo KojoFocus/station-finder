@@ -83,15 +83,6 @@ export default function RouteMap({
           data: { type: "FeatureCollection", features: [] },
         });
         map.addLayer({
-          id: "stops-halo", type: "circle", source: "stops",
-          paint: {
-            "circle-radius": 11,
-            "circle-color": "#4a7c59",
-            "circle-opacity": 0.18,
-            "circle-blur": 1,
-          },
-        });
-        map.addLayer({
           id: "stops-dot", type: "circle", source: "stops",
           paint: {
             "circle-radius": 5,
@@ -127,33 +118,17 @@ export default function RouteMap({
           data: { type: "FeatureCollection", features: [] },
         });
         map.addLayer({
-          id: "trotro-route-casing", type: "line", source: "trotro-route",
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#f0c040", "line-width": 7, "line-opacity": 0.18, "line-blur": 4 },
-        });
-        map.addLayer({
           id: "trotro-route-line", type: "line", source: "trotro-route",
           layout: { "line-cap": "round", "line-join": "round" },
           paint: { "line-color": "#f0c040", "line-width": 2.5, "line-opacity": 0.75, "line-dasharray": [3, 3] },
         });
 
-        // ── Walking route layers (glow stack) ───────────────────────────────
+        // ── Walking route layers ─────────────────────────────────────────────
         map.addSource("walking", {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
         });
 
-        // Outer glow
-        map.addLayer({
-          id: "walking-glow-outer", type: "line", source: "walking",
-          paint: { "line-color": "#4a7c59", "line-width": 18, "line-opacity": 0.10, "line-blur": 12 },
-        });
-        // Mid glow
-        map.addLayer({
-          id: "walking-glow-mid", type: "line", source: "walking",
-          paint: { "line-color": "#4a7c59", "line-width": 10, "line-opacity": 0.22, "line-blur": 5 },
-        });
-        // Core bright line
         map.addLayer({
           id: "walking-core", type: "line", source: "walking",
           layout: { "line-cap": "round", "line-join": "round" },
@@ -259,8 +234,7 @@ export default function RouteMap({
             <circle cx="28" cy="28" r="8"
               fill="#4a7c59"
               stroke="white"
-              stroke-width="3"
-              style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.7))"/>
+              stroke-width="3"/>
             <!-- Dot inner highlight -->
             <circle cx="26" cy="26" r="2.5"
               fill="rgba(255,255,255,0.45)"/>
@@ -330,7 +304,7 @@ export default function RouteMap({
             <div style="
               background:#4a7c59;color:white;
               width:42px;height:42px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-              border:2.5px solid white;box-shadow:0 4px 16px rgba(74,124,89,.55),0 2px 6px rgba(0,0,0,.5);
+              border:2.5px solid white;
               display:flex;align-items:center;justify-content:center;font-size:19px;">
               <span style="transform:rotate(45deg)">🚐</span>
             </div>`;
@@ -349,7 +323,7 @@ export default function RouteMap({
             <div style="
               background:#f0c040;color:#1a1200;
               width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-              border:2px solid white;box-shadow:0 4px 16px rgba(240,192,64,.4),0 2px 6px rgba(0,0,0,.5);
+              border:2px solid white;
               display:flex;align-items:center;justify-content:center;font-size:17px;">
               <span style="transform:rotate(45deg)">📍</span>
             </div>`;
@@ -426,7 +400,6 @@ export default function RouteMap({
           border-radius: 10px;
           padding: 9px 13px;
           font-size: 12px;
-          box-shadow: 0 6px 24px rgba(0,0,0,.7);
         }
         .mapboxgl-popup-tip {
           border-top-color:    #152213 !important;
