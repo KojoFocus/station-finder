@@ -530,6 +530,12 @@ export default function HomePage() {
   // ── On mount / after clear: restore session or show welcome ─────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    // Bump this string any time the session message format changes — clears stale sessions.
+    const SESSION_VERSION = "v4";
+    if (sessionStorage.getItem("sf_session_ver") !== SESSION_VERSION) {
+      sessionStorage.removeItem("sf_msgs");
+      sessionStorage.setItem("sf_session_ver", SESSION_VERSION);
+    }
     const saved = welcomeKey === 0 ? sessionStorage.getItem("sf_msgs") : null;
     const restored = saved ? (() => {
       try {
