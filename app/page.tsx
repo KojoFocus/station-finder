@@ -16,6 +16,7 @@ interface TrotroLeg {
 }
 interface DirectionsResult {
   routeFound: boolean;
+  aiGuidance: string | null;
   destCoords:   { lat: number; lng: number };
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
   alightingStop: { name: string; lat: number; lng: number } | null;
@@ -622,19 +623,24 @@ export default function HomePage() {
       setSearchStatus(null);
       if (!ok) {
         await botSay(
-          { type: "text", text: `Hmm, I don't know "${destination}".` },
-          { type: "text", text: "Try an area name or landmark — like *Madina*, *Circle*, or *Legon*." },
+          { type: "text", text: `I couldn't place "${destination}" on the map.` },
+          { type: "text", text: "Try a nearby area or landmark — like *Madina*, *Circle*, or *Legon*." },
         );
         setProcessing(false); return;
       }
 
       if (!data.routeFound) {
-        await botSay(
-          { type: "text", text: `I don't have a trotro route to ${destination} in my data yet.` },
-          { type: "text", text: `Your closest stop is **${data.boardingStop.name}** — you might find a car heading that way from there.` },
-          { type: "text", text: "If you do find the route, help others by mapping it:" },
-          { type: "chips", chips: [{ label: "📍 Map It →", action: "map_it" }] },
-        );
+        if (data.aiGuidance) {
+          await botSay(
+            { type: "text", text: data.aiGuidance },
+            { type: "text", text: "This is based on general knowledge — always confirm fares with the mate." },
+          );
+        } else {
+          await botSay(
+            { type: "text", text: `I don't have a verified route to ${destination} yet.` },
+            { type: "text", text: `Your closest stop is **${data.boardingStop.name}** — you might find something heading that way.` },
+          );
+        }
         setProcessing(false); return;
       }
 
@@ -672,8 +678,8 @@ export default function HomePage() {
       // Follow-up messages after route card
       if (!fromAddress && data.boardingStop.distanceM > 2000) {
         await botSay(
-          { type: "text", text: "That starting point looks a bit far — your GPS might be off." },
-          { type: "text", text: `Tell me where you are, like: *From Teiman to ${destination}*` },
+          { type: "text", text: "Your starting point looks a bit far — your GPS might be slightly off." },
+          { type: "text", text: `You can also tell me where you are: *From Teiman to ${destination}*` },
         );
       } else {
         const extras: Omit<Msg, "id" | "timestamp" | "from">[] = [];
@@ -699,13 +705,13 @@ export default function HomePage() {
           await botSay({ type: "text", text: `📶 Offline — showing your last saved route to **${cached.destination}**.` });
         } else {
           await botSay(
-            { type: "text", text: "📶 No connection and no saved route." },
-            { type: "text", text: "Try again when you're connected." },
+            { type: "text", text: "📶 No connection right now, and no saved route yet." },
+            { type: "text", text: "Once you travel a route, it'll be saved here for offline use." },
           );
         }
       } else {
         await botSay(
-          { type: "text", text: "Connection error. Please try again." },
+          { type: "text", text: "Couldn't reach the server — check your connection and try again." },
           { type: "chips", chips: [{ label: "Retry →", action: "retry_last" }] },
         );
       }
@@ -778,7 +784,7 @@ export default function HomePage() {
 
     // Non-travel intent (greeting, question, etc.)
     if (gemini?.intent === "other" && !destination) {
-      await botSay({ type: "text", text: "I'm best at finding trotro routes. Where are you trying to get to?" });
+      await botSay({ type: "text", text: "Just tell me where you'd like to go and I'll find you a trotro." });
       return;
     }
 

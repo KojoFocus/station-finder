@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 type LatLng = { lat: number; lng: number };
 
@@ -25,6 +28,7 @@ export interface TrotroLeg {
 
 export interface DirectionsResponse {
   routeFound: boolean;
+  aiGuidance: string | null;
   destCoords: LatLng;
   boardingStop: {
     name: string; lat: number; lng: number;
@@ -463,8 +467,25 @@ export async function POST(req: NextRequest) {
 
     logSearch(destination, legs.length > 0, userLat, userLng);
 
+    // ── AI guidance fallback when DB has no route ─────────────────────────────
+    let aiGuidance: string | null = null;
+    if (legs.length === 0) {
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+        const result = await model.generateContent(
+          `You are a friendly local trotro guide in Accra, Ghana. Someone near ${boardingStop.name} wants to get to "${destination}".
+Using your knowledge of Accra's trotro network, give them warm, practical directions in 2–3 sentences.
+Mention real station names, what the mate typically calls out, and a rough fare range if you know it.
+If you're not certain, frame it naturally — "you'll likely need to..." or "ask at the station for...".
+Write like a helpful local, not a robot. No bullet points, no markdown, no headers.`
+        );
+        aiGuidance = result.response.text().trim();
+      } catch { /* leave null — client shows fallback */ }
+    }
+
     return NextResponse.json({
       routeFound: legs.length > 0,
+      aiGuidance,
       destCoords,
       boardingStop: { name: boardingStop.name, lat: boardingStop.latitude, lng: boardingStop.longitude, description: boardingStop.description, distanceM: walkDistM, walkingMins: walkMins },
       alightingStop: alightingStop ? { name: alightingStop.name, lat: alightingStop.latitude, lng: alightingStop.longitude } : null,
