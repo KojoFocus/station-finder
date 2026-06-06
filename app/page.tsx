@@ -62,7 +62,7 @@ function fareRange(fare: number): string {
 function timeContext(): string | null {
   const h = new Date().getHours();
   if (h >= 6  && h < 9)  return "🚦 Rush hour — expect longer waits and full trotros.";
-  if (h >= 16 && h < 19) return "🚦 Evening rush — trotros fill up fast right now.";
+  if (h >= 16 && h < 20) return "🚦 Evening rush — trotros fill up fast right now.";
   if (h >= 21 || h < 5)  return "🌙 Late night — trotros may be infrequent. Confirm before heading out.";
   return null;
 }
@@ -167,7 +167,7 @@ function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand
   }
 
   return (
-    <div className="shrink-0 px-4 pt-1 transition-all duration-500 relative" style={{ height }}>
+    <div className="shrink-0 px-4 pt-1 transition-all duration-[900ms] ease-in-out relative" style={{ height }}>
       {map}
       {/* Expand button */}
       <button
@@ -492,14 +492,14 @@ export default function HomePage() {
     for (const m of toSend) {
       if (m.type === "text") {
         setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
-        const ms = Math.min(1100, 380 + ((m.text?.length ?? 0) * 11));
+        const ms = Math.min(2000, 700 + ((m.text?.length ?? 0) * 22));
         await new Promise<void>(r => setTimeout(r, ms));
         setMsgs(p => p.filter(x => x.type !== "typing"));
       } else {
         await new Promise<void>(r => setTimeout(r, 120));
       }
       setMsgs(p => [...p, { id: uid(), from: "bot", timestamp: new Date(), ...m } as Msg]);
-      if (m.type !== "chips") await new Promise<void>(r => setTimeout(r, 80));
+      if (m.type !== "chips") await new Promise<void>(r => setTimeout(r, 420));
     }
   }, [translateText]);
 
@@ -636,6 +636,11 @@ export default function HomePage() {
         setProcessing(false); return;
       }
 
+      // Brief pause so route card doesn't snap in instantly after typing dots
+      setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
+      await new Promise<void>(r => setTimeout(r, 700));
+      setMsgs(p => p.filter(x => x.type !== "typing"));
+
       setResult(data);
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
@@ -670,6 +675,8 @@ export default function HomePage() {
         );
       } else {
         const extras: Omit<Msg, "id" | "timestamp" | "from">[] = [];
+        const rushCtx = timeContext();
+        if (rushCtx) extras.push({ type: "text", text: rushCtx });
         if (data.boardingStop.walkingMins > 10) {
           extras.push({ type: "text", text: `Heads up — it's about a ${data.boardingStop.walkingMins}-min walk to that stop. 🚶` });
         }
