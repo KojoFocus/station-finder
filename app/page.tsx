@@ -703,25 +703,6 @@ export default function HomePage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Recent searches */}
-        {recentSearches.length > 0 && !input && (
-          <div className="shrink-0 px-4 pb-2 border-t border-stroke pt-2">
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">Recent</p>
-            <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-              {recentSearches.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => send(`From ${s.origin} to ${s.destination}`)}
-                  className="shrink-0 flex items-center gap-1.5 text-[11px] text-content-secondary border border-stroke bg-surface-card px-3 py-1.5 rounded-full active:scale-95 transition-all whitespace-nowrap"
-                >
-                  <span className="text-[10px]">🕐</span>
-                  {s.origin.split(" ")[0]} → {s.destination}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Input bar */}
         <div className="shrink-0 px-4 pb-safe pb-5 pt-3 flex gap-3 items-end border-t border-stroke">
           <div className="flex-1 bg-surface-card border border-stroke rounded-2xl px-4 py-3 focus-within:border-accent transition-colors">
