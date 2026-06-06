@@ -108,7 +108,8 @@ function MapPane({ result, userLoc, navigating, height }: {
 
 function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | null }) {
   const legs = result.trotro?.legs ?? [];
-  const totalMins = result.boardingStop.walkingMins + legs.reduce((s, l) => s + l.durationMins, 0);
+  const trotroMins = legs.reduce((s, l) => s + l.durationMins, 0);
+  const totalMins = result.boardingStop.walkingMins + trotroMins;
 
   return (
     <div className="rounded-2xl rounded-bl-sm overflow-hidden min-w-[240px] shadow-card border border-stroke"
@@ -362,7 +363,7 @@ export default function HomePage() {
         setProcessing(false); return;
       }
       setResult(data);
-      const fare = data.trotro ? data.trotro.legs.reduce((s, l) => s + l.fare, 0) : null;
+      const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
       addMsg({ from: "bot", type: "chips", chips: [
         { label: "Start Navigation →", action: "start_nav" },
