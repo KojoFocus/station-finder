@@ -95,29 +95,89 @@ async function fetchDirections(body: Record<string, unknown>) {
   return { ok: res.ok, data: await res.json() as DirectionsResult & { error?: string } };
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function vibrate() { try { navigator.vibrate?.(8); } catch { /* not supported */ } }
+
+function frequencyHint(durationMins: number, transitType: string): string {
+  if (transitType === "Intercity Bus") return "book in advance";
+  const h = new Date().getHours();
+  if (h >= 21 || h < 5) return "infrequent at this hour";
+  if (durationMins <= 15) return "every 5–10 min";
+  if (durationMins <= 35) return "every 10–20 min";
+  if (durationMins <= 60) return "every 20–40 min";
+  return "less frequent";
+}
+
+// ─── Markdown renderer ────────────────────────────────────────────────────────
+// Parses **bold** and *italic* into React elements; leaves everything else as-is.
+function renderText(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**"))
+      return <strong key={i} className="font-semibold text-content-primary">{p.slice(2, -2)}</strong>;
+    if (p.startsWith("*") && p.endsWith("*"))
+      return <em key={i} className="not-italic text-content-secondary">{p.slice(1, -1)}</em>;
+    return p;
+  });
+}
+
 // ─── MapPane ──────────────────────────────────────────────────────────────────
 
-function MapPane({ result, userLoc, navigating, height }: {
+function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand }: {
   result: DirectionsResult | null;
   userLoc: { lat: number; lng: number } | null;
   navigating: boolean;
   height: string;
+  expanded: boolean;
+  onToggleExpand: () => void;
 }) {
+  const map = (
+    <Suspense fallback={
+      <div className="w-full h-full rounded-2xl bg-surface-card border border-stroke flex items-center justify-center">
+        <span className="text-content-muted text-xs">Loading map…</span>
+      </div>
+    }>
+      <RouteMap
+        userLocation={userLoc}
+        boardingStop={result?.boardingStop ?? null}
+        destCoords={result?.destCoords ?? null}
+        walkingGeoJSON={result?.walkingGeoJSON ?? null}
+        followUser={navigating}
+        expanded={expanded}
+      />
+    </Suspense>
+  );
+
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#0d1a0b]">
+        {map}
+        {/* Back button */}
+        <button
+          onClick={onToggleExpand}
+          className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-[#0d1a0b]/80 border border-stroke backdrop-blur-sm flex items-center justify-center text-content-primary active:scale-90 transition-all shadow-lg"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="shrink-0 px-4 pt-1 transition-all duration-500" style={{ height }}>
-      <Suspense fallback={
-        <div className="w-full h-full rounded-2xl bg-surface-card border border-stroke flex items-center justify-center">
-          <span className="text-content-muted text-xs">Loading map…</span>
-        </div>
-      }>
-        <RouteMap
-          userLocation={userLoc}
-          boardingStop={result?.boardingStop ?? null}
-          destCoords={result?.destCoords ?? null}
-          walkingGeoJSON={result?.walkingGeoJSON ?? null}
-          followUser={navigating}
-        />
-      </Suspense>
+    <div className="shrink-0 px-4 pt-1 transition-all duration-500 relative" style={{ height }}>
+      {map}
+      {/* Expand button */}
+      <button
+        onClick={onToggleExpand}
+        className="absolute top-3.5 right-6 z-10 w-8 h-8 rounded-full bg-black/50 border border-white/10 backdrop-blur-sm flex items-center justify-center text-white/70 active:scale-90 transition-all"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
+        </svg>
+      </button>
     </div>
   );
 }
@@ -166,7 +226,7 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
               <div>
                 <p className="text-content-primary text-xs font-semibold">{leg.from} → {leg.to}</p>
                 <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{leg.whatToLookFor}</p>
-                <p className="text-content-muted text-[11px] mt-1">{fareRange(leg.fare)} · ~{leg.durationMins} min</p>
+                <p className="text-content-muted text-[11px] mt-1">{fareRange(leg.fare)} · ~{leg.durationMins} min · {frequencyHint(leg.durationMins, leg.transitType)}</p>
               </div>
             </div>
           </div>
@@ -196,6 +256,13 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
             💡 {result.trotro.alternateNote}
           </p>
         )}
+
+        {/* Peak-hour fare note */}
+        {(() => { const h = new Date().getHours(); return ((h >= 6 && h < 9) || (h >= 16 && h < 19)) ? (
+          <p className="text-[#f0c040]/70 text-[10px] pt-1 border-t border-stroke">
+            ⏰ Fares may be higher during rush hour
+          </p>
+        ) : null; })()}
 
         {/* Fare disclaimer */}
         <p className="text-content-disabled text-[9px]">Fares are estimates — confirm with the mate.</p>
@@ -304,6 +371,13 @@ export default function HomePage() {
   const [installPrompt,   setInstallPrompt]  = useState<any>(null);
   const [showInstall,     setShowInstall]    = useState(false);
   const [starred,         setStarred]        = useState<{ origin: string; destination: string }[]>([]);
+  const [containerH,      setContainerH]     = useState<string | null>(null);
+  const [searchStatus,    setSearchStatus]   = useState<string | null>(null);
+  const [mapExpanded,     setMapExpanded]    = useState(false);
+  const [lang,            setLang]           = useState<"en" | "tw">("en");
+  const [homePlace,       setHomePlace]      = useState<{ name: string } | null>(null);
+  const [workPlace,       setWorkPlace]      = useState<{ name: string } | null>(null);
+  const [welcomeKey,      setWelcomeKey]     = useState(0);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const bottomRef    = useRef<HTMLDivElement>(null);
@@ -311,13 +385,18 @@ export default function HomePage() {
   const resultRef    = useRef<DirectionsResult | null>(null);
   const stepIdxRef   = useRef(0);
   const voiceOnRef   = useRef(false);
+  const langRef      = useRef<"en" | "tw">("en");
+  const translationCache = useRef(new Map<string, string>());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const speechRecRef = useRef<any>(null);
+  const speechRecRef   = useRef<any>(null);
+  const lastSearchRef        = useRef<{ destination: string; fromAddress?: string; coords?: { lat: number; lng: number } } | null>(null);
+  const searchStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync
   useEffect(() => { resultRef.current  = result;  }, [result]);
   useEffect(() => { stepIdxRef.current = stepIdx; }, [stepIdx]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
+  useEffect(() => { langRef.current    = lang;    }, [lang]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
   // ── Device ID + recent search history ────────────────────────────────────
@@ -340,6 +419,12 @@ export default function HomePage() {
       const saved = JSON.parse(localStorage.getItem("sf_starred") ?? "[]");
       if (Array.isArray(saved)) setStarred(saved);
     } catch { /* ignore */ }
+    // Load home/work/lang
+    try {
+      const h = localStorage.getItem("sf_home"); if (h) setHomePlace(JSON.parse(h));
+      const w = localStorage.getItem("sf_work"); if (w) setWorkPlace(JSON.parse(w));
+      const l = localStorage.getItem("sf_lang") as "en" | "tw" | null; if (l) setLang(l);
+    } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -360,17 +445,51 @@ export default function HomePage() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
+  // ── Android keyboard: shrink container to visual viewport height ──────────
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vv = (window as any).visualViewport as (EventTarget & { height: number }) | null;
+    if (!vv) return;
+    const update = () => setContainerH(`${vv.height}px`);
+    vv.addEventListener("resize", update);
+    update();
+    return () => vv.removeEventListener("resize", update);
+  }, []);
+
   // ── Message helpers ────────────────────────────────────────────────────────
   const addMsg      = useCallback((m: Omit<Msg, "id" | "timestamp">) =>
     setMsgs(p => [...p, { id: uid(), timestamp: new Date(), ...m }]), []);
   const removeTyping = useCallback(() =>
     setMsgs(p => p.filter(m => m.type !== "typing")), []);
 
+  // ── Twi translation (Gemini, session-cached) ──────────────────────────────
+  const translateText = useCallback(async (text: string): Promise<string> => {
+    if (langRef.current !== "tw") return text;
+    const cached = translationCache.current.get(text);
+    if (cached) return cached;
+    try {
+      const r = await fetch("/api/translate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (r.ok) {
+        const { translated } = await r.json() as { translated: string };
+        translationCache.current.set(text, translated);
+        return translated;
+      }
+    } catch { /* use original */ }
+    return text;
+  }, []);
+
   // ── botSay: sequential bot messages with natural typing pauses ────────────
-  // Each text message shows typing dots for a duration based on length,
-  // then the message appears. Chips appear after a short gap, no dots.
   const botSay = useCallback(async (...msgs: Omit<Msg, "id" | "timestamp" | "from">[]) => {
-    for (const m of msgs) {
+    // Translate text messages if Twi mode is on
+    const toSend = langRef.current === "tw"
+      ? await Promise.all(msgs.map(async (m) =>
+          m.type === "text" && m.text ? { ...m, text: await translateText(m.text) } : m))
+      : msgs;
+
+    for (const m of toSend) {
       if (m.type === "text") {
         setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
         const ms = Math.min(1100, 380 + ((m.text?.length ?? 0) * 11));
@@ -382,7 +501,19 @@ export default function HomePage() {
       setMsgs(p => [...p, { id: uid(), from: "bot", timestamp: new Date(), ...m } as Msg]);
       if (m.type !== "chips") await new Promise<void>(r => setTimeout(r, 80));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translateText]);
+
+  // ── Clear chat — resets session and triggers fresh welcome ────────────────
+  const clearChat = useCallback(() => {
+    sessionStorage.removeItem("sf_msgs");
+    setMsgs([]);
+    setResult(null);
+    setProcessing(false);
+    setNavigating(false);
+    setKnownOrigin(null);
+    setPendingDest(null);
+    setStepIdx(0);
+    setWelcomeKey(k => k + 1);
   }, []);
 
   // ── Persist chat to sessionStorage ────────────────────────────────────────
@@ -396,10 +527,10 @@ export default function HomePage() {
     } catch { /* storage full */ }
   }, [msgs]);
 
-  // ── On mount: restore session or show welcome ──────────────────────────────
+  // ── On mount / after clear: restore session or show welcome ─────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const saved = sessionStorage.getItem("sf_msgs");
+    const saved = welcomeKey === 0 ? sessionStorage.getItem("sf_msgs") : null;
     const restored = saved ? (() => {
       try {
         return (JSON.parse(saved) as Array<Omit<Msg, "timestamp"> & { timestamp: string }>)
@@ -438,7 +569,7 @@ export default function HomePage() {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
       botSay(
         { type: "text", text: "Akwaaba! 👋" },
-        { type: "text", text: "Location is off. Just tell me where you are." },
+        { type: "text", text: "Location is off — no problem, just tell me where you are." },
         { type: "text", text: "e.g. *I'm at Teiman, going to Kaneshie*" },
         { type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] },
       );
@@ -467,11 +598,16 @@ export default function HomePage() {
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [welcomeKey]);
 
   // ── Search ─────────────────────────────────────────────────────────────────
   const search = useCallback(async (destination: string, fromAddress?: string, coords?: { lat: number; lng: number }) => {
+    lastSearchRef.current = { destination, fromAddress, coords };
     setProcessing(true);
+    setSearchStatus("Checking trotro routes…");
+    if (searchStatusTimerRef.current) clearTimeout(searchStatusTimerRef.current);
+    searchStatusTimerRef.current = setTimeout(() => setSearchStatus("Almost there…"), 3000);
     setTimeout(() => addMsg({ from: "bot", type: "typing" }), 200);
     const body: Record<string, unknown> = { destination };
     if (fromAddress)  body.fromAddress = fromAddress;
@@ -480,19 +616,21 @@ export default function HomePage() {
     try {
       const { ok, data } = await fetchDirections(body);
       removeTyping();
+      if (searchStatusTimerRef.current) { clearTimeout(searchStatusTimerRef.current); searchStatusTimerRef.current = null; }
+      setSearchStatus(null);
       if (!ok) {
         await botSay(
-          { type: "text", text: `Couldn't find "${destination}" in Ghana.` },
-          { type: "text", text: "Try a landmark or area name." },
+          { type: "text", text: `Hmm, I don't know "${destination}".` },
+          { type: "text", text: "Try an area name or landmark — like *Madina*, *Circle*, or *Legon*." },
         );
         setProcessing(false); return;
       }
 
       if (!data.routeFound) {
         await botSay(
-          { type: "text", text: `No trotro route to **${destination}** yet.` },
-          { type: "text", text: `Your nearest stop is **${data.boardingStop.name}**.` },
-          { type: "text", text: "Find the trotro, note where you board, alight, and the fare — then Map It:" },
+          { type: "text", text: `I don't have a trotro route to ${destination} in my data yet.` },
+          { type: "text", text: `Your closest stop is **${data.boardingStop.name}** — you might find a car heading that way from there.` },
+          { type: "text", text: "If you do find the route, help others by mapping it:" },
           { type: "chips", chips: [{ label: "📍 Map It →", action: "map_it" }] },
         );
         setProcessing(false); return;
@@ -501,6 +639,7 @@ export default function HomePage() {
       setResult(data);
       const fare = data.trotro?.legs?.reduce((s, l) => s + l.fare, 0) ?? null;
       addMsg({ from: "bot", type: "route", result: data, fare });
+      try { localStorage.setItem("sf_last_route", JSON.stringify({ result: data, fare, destination })); } catch { /* storage full */ }
 
       // Show install prompt after first successful route (once only)
       if (installPrompt && !localStorage.getItem("sf_install_dismissed")) {
@@ -526,26 +665,51 @@ export default function HomePage() {
       // Follow-up messages after route card
       if (!fromAddress && data.boardingStop.distanceM > 2000) {
         await botSay(
-          { type: "text", text: `⚠️ That start looks far — GPS might be off.` },
-          { type: "text", text: `Try: *"From Teiman to ${destination}"*` },
+          { type: "text", text: "That starting point looks a bit far — your GPS might be off." },
+          { type: "text", text: `Tell me where you are, like: *From Teiman to ${destination}*` },
         );
       } else {
         const extras: Omit<Msg, "id" | "timestamp" | "from">[] = [];
         if (data.boardingStop.walkingMins > 10) {
-          extras.push({ type: "text", text: `🚶 That's a ${data.boardingStop.walkingMins}-min walk to the stop.` });
+          extras.push({ type: "text", text: `Heads up — it's about a ${data.boardingStop.walkingMins}-min walk to that stop. 🚶` });
         }
         extras.push({ type: "chips", chips: [
           { label: "Start Navigation →", action: "start_nav" },
           { label: "📤 Share on WhatsApp", action: "share_wa" },
         ]});
+        // Save as Home/Work shortcuts — only show if not already saved
+        const destLabel = data.trotro?.legs?.at(-1)?.to ?? destination;
+        const saveChips: { label: string; action: string }[] = [];
+        if (!homePlace || homePlace.name !== destLabel) saveChips.push({ label: "🏠 Save as Home", action: `save_home:${destLabel}` });
+        if (!workPlace || workPlace.name !== destLabel) saveChips.push({ label: "💼 Save as Work", action: `save_work:${destLabel}` });
+        if (saveChips.length > 0) extras.push({ type: "chips", chips: saveChips });
         await botSay(...extras);
       }
     } catch {
       removeTyping();
-      await botSay({ type: "text", text: "Connection error. Please try again." });
+      if (searchStatusTimerRef.current) { clearTimeout(searchStatusTimerRef.current); searchStatusTimerRef.current = null; }
+      setSearchStatus(null);
+      if (!navigator.onLine) {
+        const cached = (() => { try { return JSON.parse(localStorage.getItem("sf_last_route") ?? "null"); } catch { return null; } })();
+        if (cached?.result) {
+          setResult(cached.result);
+          addMsg({ from: "bot", type: "route", result: cached.result, fare: cached.fare });
+          await botSay({ type: "text", text: `📶 Offline — showing your last saved route to **${cached.destination}**.` });
+        } else {
+          await botSay(
+            { type: "text", text: "📶 No connection and no saved route." },
+            { type: "text", text: "Try again when you're connected." },
+          );
+        }
+      } else {
+        await botSay(
+          { type: "text", text: "Connection error. Please try again." },
+          { type: "chips", chips: [{ label: "Retry →", action: "retry_last" }] },
+        );
+      }
     }
     setProcessing(false);
-  }, [addMsg, removeTyping, botSay, deviceId]);
+  }, [addMsg, removeTyping, botSay, deviceId, homePlace, workPlace]);
 
   // ── Send ───────────────────────────────────────────────────────────────────
   const send = useCallback(async (text: string) => {
@@ -555,38 +719,80 @@ export default function HomePage() {
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
 
-    const parsed = parseInput(t);
-
-    if (parsed.locatedAt) {
-      setKnownOrigin(parsed.locatedAt);
-      await botSay({ type: "text", text: `📍 Got it — **${parsed.locatedAt}**. Where are you going?` });
-      return;
-    }
-
     if (navigating) {
       if (watchId !== null) { navigator.geolocation.clearWatch(watchId); setWatchId(null); }
       setNavigating(false);
     }
 
+    // "Take me home / to work" shortcuts
+    if (/\b(take me home|go home|i want to go home|head home)\b/i.test(t) && homePlace) {
+      if (userLoc) { await search(homePlace.name, undefined, userLoc); return; }
+      if (knownOrigin) { await search(homePlace.name, knownOrigin); return; }
+      setPendingDest(homePlace.name); await botSay({ type: "text", text: "Where are you coming from?" }); return;
+    }
+    if (/\b(take me to work|go to work|i want to go to work|head to work)\b/i.test(t) && workPlace) {
+      if (userLoc) { await search(workPlace.name, undefined, userLoc); return; }
+      if (knownOrigin) { await search(workPlace.name, knownOrigin); return; }
+      setPendingDest(workPlace.name); await botSay({ type: "text", text: "Where are you coming from?" }); return;
+    }
+
+    // If we're waiting for the user to supply their origin
     if (pendingDest) {
       setPendingDest(null);
       await search(pendingDest, t);
       return;
     }
 
-    const { fromAddress, destination } = parsed;
+    // ── Gemini intent extraction (2.5 s timeout → regex fallback) ──────────
+    const msgHistory = msgs
+      .filter((m) => m.type === "text" && m.text)
+      .slice(-8)
+      .map((m) => ({ role: m.from === "user" ? "user" : "assistant", text: m.text! }));
+
+    const gemini = await Promise.race([
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: t, history: msgHistory }),
+      })
+        .then((r) => (r.ok ? (r.json() as Promise<{ intent: string; origin: string | null; destination: string | null; locatedAt: string | null }>) : null))
+        .catch(() => null),
+      new Promise<null>((res) => setTimeout(() => res(null), 2500)),
+    ]);
+
+    // Merge with regex fallback
+    const regexParsed = parseInput(t);
+    const destination = gemini?.destination ?? regexParsed.destination;
+    const fromAddress = gemini?.origin      ?? regexParsed.fromAddress;
+    const locatedAt   = gemini?.locatedAt   ?? regexParsed.locatedAt;
+
+    // Pure location update — user told us where they are
+    if ((gemini?.intent === "location_update" || (!destination && locatedAt))) {
+      const place = locatedAt ?? t;
+      setKnownOrigin(place);
+      await botSay({ type: "text", text: `Got it — you're at **${place}**. Where are you heading?` });
+      return;
+    }
+
+    // Non-travel intent (greeting, question, etc.)
+    if (gemini?.intent === "other" && !destination) {
+      await botSay({ type: "text", text: "I'm best at finding trotro routes. Where are you trying to get to?" });
+      return;
+    }
+
     if (!destination) return;
-    if (fromAddress)       await search(destination, fromAddress);
-    else if (userLoc)      await search(destination, undefined, userLoc);
-    else if (knownOrigin)  await search(destination, knownOrigin);
+
+    if (fromAddress)      await search(destination, fromAddress);
+    else if (userLoc)     await search(destination, undefined, userLoc);
+    else if (knownOrigin) await search(destination, knownOrigin);
     else {
       setPendingDest(destination);
       await botSay(
         { type: "text", text: "Where are you coming from?" },
-        { type: "text", text: "e.g. *Teiman* or *Oyarifa*" },
+        { type: "text", text: "Just the area — like *Teiman* or *Oyarifa*" },
       );
     }
-  }, [addMsg, botSay, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin]);
+  }, [addMsg, botSay, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin, msgs, homePlace, workPlace]);
 
   // ── Deep link trigger (after send is defined) ─────────────────────────────
   useEffect(() => {
@@ -674,7 +880,21 @@ export default function HomePage() {
 
   // ── Chip actions ───────────────────────────────────────────────────────────
   const onChip = useCallback((action: string) => {
-    if (action.startsWith("dest:")) { send(action.slice(5)); return; }
+    vibrate();
+    if (action.startsWith("dest:"))      { send(action.slice(5)); return; }
+    if (action === "retry_last")         { const l = lastSearchRef.current; if (l) search(l.destination, l.fromAddress, l.coords); return; }
+    if (action === "go_home")            { if (homePlace) send(homePlace.name); return; }
+    if (action === "go_work")            { if (workPlace) send(workPlace.name); return; }
+    if (action.startsWith("save_home:")) {
+      const place = { name: action.slice(10) };
+      setHomePlace(place); localStorage.setItem("sf_home", JSON.stringify(place));
+      botSay({ type: "text", text: `🏠 Saved **${place.name}** as Home. Just say "take me home" next time.` }); return;
+    }
+    if (action.startsWith("save_work:")) {
+      const place = { name: action.slice(10) };
+      setWorkPlace(place); localStorage.setItem("sf_work", JSON.stringify(place));
+      botSay({ type: "text", text: `💼 Saved **${place.name}** as Work. Say "take me to work" anytime.` }); return;
+    }
     if (action === "start_nav") startNavigation();
     if (action === "map_it")   router.push("/map-it");
     if (action === "retry_gps") {
@@ -704,14 +924,14 @@ export default function HomePage() {
       ].filter((l) => l !== null).join("\n");
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     }
-  }, [startNavigation, router]);
+  }, [startNavigation, router, search, send, homePlace, workPlace, botSay]);
 
   // ── Map height ─────────────────────────────────────────────────────────────
   const mapH = navigating ? "48vh" : result ? "38vh" : "32vh";
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-dvh bg-canvas" suppressHydrationWarning>
+    <div className="flex flex-col bg-canvas" style={{ height: containerH ?? "100dvh" }} suppressHydrationWarning>
 
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between gap-2 px-4 pt-4 pb-3 border-b border-stroke">
@@ -729,21 +949,40 @@ export default function HomePage() {
               Stop
             </button>
           )}
+          {/* Twi toggle */}
+          <button
+            onClick={() => {
+              const next = lang === "en" ? "tw" : "en";
+              setLang(next);
+              localStorage.setItem("sf_lang", next);
+              translationCache.current.clear();
+              botSay({ type: "text", text: next === "tw" ? "Twi mode yɛ so. Mɛkasa Twi." : "Back to English." });
+            }}
+            className={`whitespace-nowrap text-[10px] px-2.5 py-1.5 rounded-full border active:scale-95 transition-all ${lang === "tw" ? "bg-accent/20 text-accent border-accent/40" : "text-content-muted border-stroke"}`}
+          >
+            {lang === "tw" ? "TW" : "EN"}
+          </button>
           <button onClick={() => setVoiceOn(v => !v)}
             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all active:scale-90 shrink-0 ${voiceOn ? "bg-accent text-white" : "text-content-muted"}`}>
             {voiceOn ? "🔊" : "🔇"}
           </button>
           {!navigating && (
-            <Link href="/map-it"
-              className="whitespace-nowrap flex items-center gap-1 text-[10px] text-content-secondary border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
-              📍 Map It
-            </Link>
+            <>
+              <button onClick={clearChat}
+                className="whitespace-nowrap text-[10px] text-content-muted border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
+                ✕ Clear
+              </button>
+              <Link href="/map-it"
+                className="whitespace-nowrap flex items-center gap-1 text-[10px] text-content-secondary border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
+                📍 Map It
+              </Link>
+            </>
           )}
         </div>
       </header>
 
       {/* Map */}
-      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} />
+      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} onToggleExpand={() => setMapExpanded(v => !v)} />
 
       {/* Chat sheet */}
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)]">
@@ -753,9 +992,35 @@ export default function HomePage() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
           {/* Welcome back card — shown on fresh chat when history exists */}
-          {msgs.filter(m => m.from === "user").length === 0 && (recentSearches.length > 0 || starred.length > 0) && (
+          {msgs.filter(m => m.from === "user").length === 0 && (recentSearches.length > 0 || starred.length > 0 || homePlace || workPlace) && (
             <div className="flex flex-col gap-3">
               <p className="text-content-secondary text-sm font-medium">Akwaaba back 👋</p>
+
+              {/* Home / Work quick shortcuts */}
+              {(homePlace || workPlace) && (
+                <div className="flex gap-2">
+                  {homePlace && (
+                    <button onClick={() => onChip("go_home")} disabled={processing}
+                      className="flex-1 flex items-center gap-2 bg-surface-card border border-stroke rounded-2xl px-4 py-3 active:opacity-60 disabled:opacity-40 transition-opacity">
+                      <span className="text-base">🏠</span>
+                      <div className="text-left min-w-0">
+                        <p className="text-content-primary text-xs font-semibold leading-tight">Home</p>
+                        <p className="text-content-muted text-[10px] truncate">{homePlace.name}</p>
+                      </div>
+                    </button>
+                  )}
+                  {workPlace && (
+                    <button onClick={() => onChip("go_work")} disabled={processing}
+                      className="flex-1 flex items-center gap-2 bg-surface-card border border-stroke rounded-2xl px-4 py-3 active:opacity-60 disabled:opacity-40 transition-opacity">
+                      <span className="text-base">💼</span>
+                      <div className="text-left min-w-0">
+                        <p className="text-content-primary text-xs font-semibold leading-tight">Work</p>
+                        <p className="text-content-muted text-[10px] truncate">{workPlace.name}</p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Starred routes */}
               {starred.length > 0 && (
@@ -801,12 +1066,16 @@ export default function HomePage() {
               <div key={msg.id} className="flex gap-2.5 items-end">
                 <div className="w-7 h-7 rounded-full bg-surface-elevated border border-stroke flex items-center justify-center text-xs shrink-0">🚐</div>
                 <div className="bg-surface-card border border-stroke rounded-2xl rounded-bl-sm px-4 py-3.5 shadow-card">
-                  <div className="flex gap-1.5 items-center h-3.5">
-                    {[0, 1, 2].map(i => (
-                      <div key={i} className="w-2 h-2 rounded-full bg-content-muted animate-bounce"
-                           style={{ animationDelay: `${i * 180}ms`, animationDuration: "0.9s" }} />
-                    ))}
-                  </div>
+                  {searchStatus ? (
+                    <p className="text-content-secondary text-[12px] leading-none">{searchStatus}</p>
+                  ) : (
+                    <div className="flex gap-1.5 items-center h-3.5">
+                      {[0, 1, 2].map(i => (
+                        <div key={i} className="w-2 h-2 rounded-full bg-content-muted animate-bounce"
+                             style={{ animationDelay: `${i * 180}ms`, animationDuration: "0.9s" }} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -837,7 +1106,7 @@ export default function HomePage() {
                 <div>
                   {msg.type === "text" && (
                     <div className="bg-surface-card border border-stroke rounded-2xl rounded-bl-sm px-4 py-3 text-[13px] text-content-primary leading-relaxed whitespace-pre-line shadow-card">
-                      {msg.text}
+                      {renderText(msg.text ?? "")}
                     </div>
                   )}
                   {msg.type === "route" && msg.result && (() => {

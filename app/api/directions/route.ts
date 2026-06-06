@@ -54,6 +54,161 @@ function distM(a: LatLng, b: LatLng): number {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
+// ─── Alias table — common nicknames → canonical location name fragment ────────
+const ALIASES: Record<string, string> = {
+  // Circle / Accra Central
+  "circle":            "Accra Central",
+  "accra central":     "Accra Central",
+  "kwame nkrumah":     "Accra Central",
+  "nkrumah circle":    "Accra Central",
+  "accra":             "Accra Central",
+  // Legon
+  "ug":                "Legon",
+  "university":        "Legon",
+  "university of ghana": "Legon",
+  "legon campus":      "Legon",
+  // 37
+  "37":                "37 Military",
+  "37 hospital":       "37 Military",
+  "military hospital": "37 Military",
+  "liberation road":   "37 Military",
+  // STC / intercity
+  "stc":               "Accra STC",
+  "stc terminal":      "Accra STC",
+  "vip":               "Accra STC",
+  "intercity":         "Accra STC",
+  // Airport
+  "airport":           "Airport",
+  "kotoka":            "Airport",
+  "kia":               "Airport",
+  // Osu
+  "osu":               "Osu",
+  "oxford street":     "Osu",
+  "danquah":           "Osu",
+  // Kaneshie
+  "kaneshie market":   "Kaneshie",
+  "kaneshie":          "Kaneshie",
+  // Madina
+  "madina zongo":      "Madina",
+  "zongo junction":    "Madina",
+  // Tema
+  "comm 1":            "Tema Station",
+  "community 1":       "Tema Station",
+  "tema comm":         "Tema Station",
+  // Lapaz / Achimota
+  "lapaz":             "Lapaz",
+  "achimota":          "Achimota",
+  // Atomic
+  "atomic":            "Atomic Junction",
+  "gaec":              "Atomic Junction",
+  // East Legon
+  "east legon":        "East Legon",
+  "bawaleshie":        "East Legon",
+  // Adenta
+  "adenta":            "Adenta",
+  "adenta barrier":    "Adenta",
+  // Spintex
+  "spintex":           "Spintex",
+  "coca cola":         "Spintex",
+  // Kasoa
+  "kasoa":             "Kasoa",
+  // Cape Coast
+  "cape coast":        "Cape Coast",
+  "cc":                "Cape Coast",
+  // Kumasi
+  "kumasi":            "Kumasi",
+  "kejetia":           "Kumasi",
+  "adum":              "Kumasi",
+  // Nungua
+  "nungua":            "Nungua",
+  // Teshie
+  "teshie":            "Teshie",
+  "lascala":           "Teshie",
+  // Ashaiman
+  "ashaiman":          "Ashaiman",
+  // Abossey Okai
+  "abossey":           "Abossey Okai",
+  "spare parts":       "Abossey Okai",
+  // Pokuase
+  "pokuase":           "Pokuase",
+  // Dome
+  "dome":              "Dome",
+  // Haatso
+  "haatso":            "Haatso",
+  // Nima
+  "nima":              "Nima",
+  // Tudu
+  "tudu":              "Tudu",
+  "makola":            "Tudu",
+  // Agbogbloshie
+  "agbogbloshie":      "Agbogbloshie",
+  "agbo":              "Agbogbloshie",
+  "abattoir":          "Agbogbloshie",
+  // Bolgatanga
+  "bolga":             "Bolgatanga",
+  "bolgatanga":        "Bolgatanga",
+  // Tamale
+  "tamale":            "Tamale",
+  // Ho
+  "ho":                "Ho Main",
+  "volta":             "Ho Main",
+  // Koforidua
+  "koforidua":         "Koforidua",
+  "kof":               "Koforidua",
+  // Wa
+  "wa":                "Wa Central",
+  // Sunyani
+  "sunyani":           "Sunyani",
+  // Takoradi
+  "takoradi":          "Takoradi",
+  "sekondi":           "Takoradi",
+  // Winneba
+  "winneba":           "Winneba",
+  // Nsawam
+  "nsawam":            "Nsawam",
+  // Aburi
+  "aburi":             "Aburi",
+  "aburi gardens":     "Aburi",
+  // Mallam
+  "mallam":            "Mallam",
+  // Dansoman
+  "dansoman":          "Dansoman",
+  "eschol":            "Dansoman",
+  // Darkuman
+  "darkuman":          "Darkuman",
+  // Korle-Bu
+  "korle bu":          "Korle-Bu",
+  "korle-bu":          "Korle-Bu",
+  // Weija
+  "weija":             "Weija",
+  "west hills":        "Weija",
+  // Amasaman
+  "amasaman":          "Amasaman",
+  // Ofankor
+  "ofankor":           "Ofankor",
+  // Tesano
+  "tesano":            "Tesano",
+  "abeka":             "Tesano",
+  // Bubuashie
+  "bubuashie":         "Bubuashie",
+  // Kanda
+  "kanda":             "Kanda",
+};
+
+function resolveAlias(query: string): string {
+  const q = query.trim().toLowerCase();
+  if (ALIASES[q]) return ALIASES[q];
+  // "stc bus station" → key "stc" is a prefix word of the query
+  for (const [key, val] of Object.entries(ALIASES)) {
+    if (key.length >= 2 && (q.startsWith(key + " ") || q.startsWith(key + ","))) return val;
+  }
+  // query contains a key as a whole token (only for keys ≥ 4 chars to avoid false positives)
+  for (const [key, val] of Object.entries(ALIASES)) {
+    if (key.length >= 4 && new RegExp(`\\b${key}\\b`).test(q)) return val;
+  }
+  return query;
+}
+
 // ─── DB name match ────────────────────────────────────────────────────────────
 function matchByName(locs: Loc[], query: string): Loc | null {
   const q = query.trim().toLowerCase();
@@ -235,7 +390,7 @@ export async function POST(req: NextRequest) {
     // ── Resolve user location ─────────────────────────────────────────────────
     let userCoords: LatLng = { lat: userLat ?? 5.5698, lng: userLng ?? -0.2184 };
     if (fromAddress) {
-      const dbOrigin = matchByName(locations, fromAddress);
+      const dbOrigin = matchByName(locations, resolveAlias(fromAddress));
       if (dbOrigin) {
         userCoords = { lat: dbOrigin.latitude, lng: dbOrigin.longitude };
       } else {
@@ -252,7 +407,7 @@ export async function POST(req: NextRequest) {
     let destCoords: LatLng;
     let destWasGeocoded = false;
 
-    const dbDest = matchByName(locations, destination);
+    const dbDest = matchByName(locations, resolveAlias(destination));
     if (dbDest) {
       alightingStop = dbDest;
       destCoords = { lat: dbDest.latitude, lng: dbDest.longitude };

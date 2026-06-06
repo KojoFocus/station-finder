@@ -296,6 +296,23 @@ const ROUTES = [
   { id: "route-tamale-wa",          originId: "loc-tamale",        destinationId: "loc-wa",            transitType: "Intercity Bus", estimatedFare: 80.0, durationMins: 180, whatToLookFor: "From Tamale bus station, westbound — 'Wa!' About 3 hours." },
   { id: "route-wa-tamale",          originId: "loc-wa",            destinationId: "loc-tamale",        transitType: "Intercity Bus", estimatedFare: 80.0, durationMins: 180, whatToLookFor: "From Wa bus station, eastbound — 'Tamale!'" },
 
+  // ── Madina direct corridors (skip Circle) ───────────────────────────────────
+  // Madina → Kaneshie direct (some trotros run this without going through Circle)
+  { id: "route-madina-kaneshie",  originId: "loc-madina",    destinationId: "loc-kaneshie",  transitType: "Trotro", estimatedFare:  6.0, durationMins:  45, whatToLookFor: "From Madina station main entrance, board trotros heading west — listen for 'Kaneshie! Kaneshie!' Less frequent than the Circle route; confirm with the mate before boarding." },
+  { id: "route-kaneshie-madina",  originId: "loc-kaneshie",  destinationId: "loc-madina",    transitType: "Trotro", estimatedFare:  6.0, durationMins:  45, whatToLookFor: "From Kaneshie lorry park far side — 'Madina!' Not as frequent as going via Circle; confirm the route with the mate." },
+  // Madina → Ashaiman (east corridor, avoids Circle for Tema-bound trips)
+  { id: "route-madina-ashaiman",  originId: "loc-madina",    destinationId: "loc-ashaiman",  transitType: "Trotro", estimatedFare:  6.0, durationMins:  45, whatToLookFor: "From Madina station east exit, board trotros heading towards Adenta and Ashaiman — 'Ashaiman! Tema road!'" },
+  { id: "route-ashaiman-madina",  originId: "loc-ashaiman",  destinationId: "loc-madina",    transitType: "Trotro", estimatedFare:  6.0, durationMins:  45, whatToLookFor: "From Ashaiman lorry station, westbound — 'Madina!' via the Adenta road. Ask the mate to confirm." },
+  // Madina ↔ Haatso (short link, enables Madina → Achimota → Kaneshie shortcut)
+  { id: "route-madina-haatso",    originId: "loc-madina",    destinationId: "loc-haatso",    transitType: "Trotro", estimatedFare:  3.0, durationMins:  20, whatToLookFor: "From Madina station west side, board trotros heading toward Achimota road — 'Haatso!'" },
+  // Adenta ↔ Ashaiman (enables north-east routing)
+  { id: "route-adenta-ashaiman",  originId: "loc-adenta",    destinationId: "loc-ashaiman",  transitType: "Trotro", estimatedFare:  4.0, durationMins:  25, whatToLookFor: "From Adenta Barrier, eastbound trotros on the Tema road — 'Ashaiman! Tema!'" },
+  { id: "route-ashaiman-adenta",  originId: "loc-ashaiman",  destinationId: "loc-adenta",    transitType: "Trotro", estimatedFare:  4.0, durationMins:  25, whatToLookFor: "From Ashaiman lorry station, westbound — 'Adenta! Madina!'" },
+  // Spintex ↔ Ashaiman
+  { id: "route-spintex-ashaiman", originId: "loc-spintex",   destinationId: "loc-ashaiman",  transitType: "Trotro", estimatedFare:  4.0, durationMins:  25, whatToLookFor: "From Spintex Coca-Cola junction, eastbound — 'Ashaiman! Tema!'" },
+  { id: "route-ashaiman-spintex", originId: "loc-ashaiman",  destinationId: "loc-spintex",   transitType: "Trotro", estimatedFare:  4.0, durationMins:  25, whatToLookFor: "From Ashaiman lorry station, westbound — 'Spintex! Airport!'" },
+  { id: "route-madina-spintex",   originId: "loc-madina",    destinationId: "loc-spintex",   transitType: "Trotro", estimatedFare:  4.5, durationMins:  30, whatToLookFor: "From Madina station, southeastbound — 'Spintex! Coca-Cola!'" },
+
   // ── Circle → STC terminal (short trotro connection) ───────────────────────────
   { id: "route-circle-stc",         originId: "loc-accra-central", destinationId: "loc-stc-terminal",  transitType: "Trotro",        estimatedFare:  2.0, durationMins:   5, whatToLookFor: "The STC terminal is a short walk or 2-minute trotro from Circle. Head toward the motorway." },
   { id: "route-stc-circle",         originId: "loc-stc-terminal",  destinationId: "loc-accra-central", transitType: "Trotro",        estimatedFare:  2.0, durationMins:   5, whatToLookFor: "From STC terminal, take any trotro heading toward Circle. Very short ride." },

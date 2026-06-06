@@ -1124,6 +1124,18 @@ export default function AdminPage() {
                       <div key={r.destination} className="flex items-center gap-3 py-2 border-b border-stroke last:border-0">
                         <span className="text-content-muted text-xs tabular-nums w-4">{i + 1}</span>
                         <p className="text-content-primary text-sm flex-1 capitalize">{r.destination}</p>
+                        <button
+                          onClick={() => {
+                            const slug = r.destination.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+                            const snippet = `  // Add to ALIASES in app/api/directions/route.ts:\n  "${r.destination.toLowerCase()}": "CANONICAL NAME HERE",\n\n  // Or add to seed.ts:\n  { id: "loc-${slug}", name: "${r.destination.charAt(0).toUpperCase() + r.destination.slice(1)}", latitude: 0, longitude: 0, description: "TODO" },`;
+                            navigator.clipboard?.writeText(snippet).catch(() => {});
+                            alert(`Copied seed snippet for "${r.destination}" — paste into seed.ts or the alias table.`);
+                          }}
+                          className="text-[10px] text-content-disabled border border-stroke px-2 py-1 rounded-full active:scale-95 hover:text-content-secondary hover:border-accent/40 transition-colors whitespace-nowrap"
+                          title="Copy seed snippet to clipboard"
+                        >
+                          Copy snippet
+                        </button>
                         <span className="text-status-danger text-xs tabular-nums font-semibold">{r.count}×</span>
                       </div>
                     ))}

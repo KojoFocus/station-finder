@@ -8,6 +8,7 @@ export interface RouteMapProps {
   destCoords:   { lat: number; lng: number } | null;
   walkingGeoJSON: object | null;
   followUser?: boolean;
+  expanded?: boolean;
 }
 
 const TOKEN   = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
@@ -23,7 +24,7 @@ function calcBearing(a: { lat: number; lng: number }, b: { lat: number; lng: num
 }
 
 export default function RouteMap({
-  userLocation, boardingStop, destCoords, walkingGeoJSON, followUser = false,
+  userLocation, boardingStop, destCoords, walkingGeoJSON, followUser = false, expanded = false,
 }: RouteMapProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +40,13 @@ export default function RouteMap({
   const prevLocRef     = useRef<{ lat: number; lng: number } | null>(null);
   const bearingRef     = useRef(0);
   const hasRouteRef    = useRef(false);
+
+  // ── Resize when expanded/collapsed ───────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const t = setTimeout(() => mapRef.current?.resize(), 320);
+    return () => clearTimeout(t);
+  }, [expanded]);
 
   // ── Init ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,6 +120,22 @@ export default function RouteMap({
           .then((r) => r.json())
           .then((gj) => { if (map.getSource("stops")) (map.getSource("stops") as any).setData(gj); })
           .catch(() => {});
+
+        // ── Trotro route line (boarding → destination) ──────────────────────
+        map.addSource("trotro-route", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "trotro-route-casing", type: "line", source: "trotro-route",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#f0c040", "line-width": 7, "line-opacity": 0.18, "line-blur": 4 },
+        });
+        map.addLayer({
+          id: "trotro-route-line", type: "line", source: "trotro-route",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#f0c040", "line-width": 2.5, "line-opacity": 0.75, "line-dasharray": [3, 3] },
+        });
 
         // ── Walking route layers (glow stack) ───────────────────────────────
         map.addSource("walking", {
@@ -278,6 +302,19 @@ export default function RouteMap({
         if (src) {
           src.setData(
             walkingGeoJSON ?? { type: "FeatureCollection", features: [] }
+          );
+        }
+
+        // Update trotro route line (straight line boarding → destination)
+        const trotroSrc = mapRef.current.getSource("trotro-route") as any;
+        if (trotroSrc) {
+          trotroSrc.setData(
+            boardingStop && destCoords ? {
+              type: "FeatureCollection",
+              features: [{ type: "Feature", geometry: { type: "LineString",
+                coordinates: [[boardingStop.lng, boardingStop.lat], [destCoords.lng, destCoords.lat]],
+              }, properties: {} }],
+            } : { type: "FeatureCollection", features: [] }
           );
         }
 
