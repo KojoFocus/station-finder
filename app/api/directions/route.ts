@@ -11,7 +11,16 @@ export interface NavStep {
   maneuverLng: number;
   type: string;
   modifier: string;
-  icon: string; // arrow character for the UI
+  icon: string;
+}
+
+export interface TrotroLeg {
+  from: string;
+  to: string;
+  whatToLookFor: string;
+  fare: number;
+  durationMins: number;
+  transitType: string;
 }
 
 export interface DirectionsResponse {
@@ -26,19 +35,7 @@ export interface DirectionsResponse {
   };
   walkingGeoJSON: object | null;
   steps: NavStep[];
-  trotro: {
-    leg1: TrotroLeg;
-    leg2: TrotroLeg | null;
-  } | null;
-}
-
-interface TrotroLeg {
-  from: string;
-  to: string;
-  whatToLookFor: string;
-  fare: number;
-  durationMins: number;
-  transitType: string;
+  trotro: { legs: TrotroLeg[] } | null;
 }
 
 // ─── Haversine ────────────────────────────────────────────────────────────────
@@ -54,7 +51,41 @@ function distanceM(a: LatLng, b: LatLng): number {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
-// ─── Nominatim geocoding ──────────────────────────────────────────────────────
+// ─── DB name matching — always prefer our own data over external geocoding ────
+type DbLocation = { id: string; name: string; latitude: number; longitude: number; description: string };
+
+function matchLocationByName(locations: DbLocation[], query: string): DbLocation | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+
+  const scored = locations.map((l) => {
+    const name = l.name.toLowerCase();
+    let score = Infinity;
+    if (name === q)                        score = 0; // exact
+    else if (name.startsWith(q))           score = 1; // prefix
+    else if (name.includes(q))             score = 2; // contains query
+    else if (q.includes(name.split(" ")[0]) && name.split(" ")[0].length > 3) score = 3; // first word of name in query
+    else {
+      // any significant word match
+      const qWords   = q.split(/\s+/).filter((w) => w.length > 3);
+      const nameWords = name.split(/\s+/).filter((w) => w.length > 3);
+      if (qWords.some((w) => name.includes(w)) || nameWords.some((w) => q.includes(w))) score = 4;
+    }
+    return { loc: l, score };
+  })
+  .filter((x) => x.score < Infinity)
+  .sort((a, b) => a.score - b.score);
+
+  return scored[0]?.loc ?? null;
+}
+
+function nearestLocation(locations: DbLocation[], coords: LatLng): DbLocation {
+  return [...locations]
+    .map((l) => ({ l, d: distanceM(coords, { lat: l.latitude, lng: l.longitude }) }))
+    .sort((a, b) => a.d - b.d)[0].l;
+}
+
+// ─── Nominatim geocoding (fallback only) ─────────────────────────────────────
 async function geocodeGhana(query: string): Promise<LatLng | null> {
   const url =
     `https://nominatim.openstreetmap.org/search` +
@@ -70,7 +101,7 @@ async function geocodeGhana(query: string): Promise<LatLng | null> {
   }
 }
 
-// ─── Turn instruction generator ───────────────────────────────────────────────
+// ─── Turn instruction helpers ─────────────────────────────────────────────────
 function makeInstruction(type: string, modifier: string, name: string): string {
   const on = name ? ` on ${name}` : "";
   switch (type) {
@@ -78,13 +109,13 @@ function makeInstruction(type: string, modifier: string, name: string): string {
     case "arrive":     return "You have arrived at the boarding stop";
     case "turn":
     case "end of road":
-      if (modifier === "left")        return `Turn left${on}`;
-      if (modifier === "right")       return `Turn right${on}`;
-      if (modifier === "slight left") return `Keep slightly left${on}`;
-      if (modifier === "slight right")return `Keep slightly right${on}`;
-      if (modifier === "sharp left")  return `Turn sharp left${on}`;
-      if (modifier === "sharp right") return `Turn sharp right${on}`;
-      if (modifier === "uturn")       return `Make a U-turn${on}`;
+      if (modifier === "left")         return `Turn left${on}`;
+      if (modifier === "right")        return `Turn right${on}`;
+      if (modifier === "slight left")  return `Keep slightly left${on}`;
+      if (modifier === "slight right") return `Keep slightly right${on}`;
+      if (modifier === "sharp left")   return `Turn sharp left${on}`;
+      if (modifier === "sharp right")  return `Turn sharp right${on}`;
+      if (modifier === "uturn")        return `Make a U-turn${on}`;
       return `Continue${on}`;
     case "new name":
     case "continue":   return `Continue straight${on}`;
@@ -127,7 +158,7 @@ async function getWalkingRoute(from: LatLng, to: LatLng) {
     const osrmSteps = route.legs?.[0]?.steps ?? [];
 
     const steps: NavStep[] = osrmSteps
-      .filter((s: Record<string, unknown>) => (s.distance as number) > 2) // skip micro-steps
+      .filter((s: Record<string, unknown>) => (s.distance as number) > 2)
       .map((s: Record<string, unknown>) => {
         const maneuver = s.maneuver as Record<string, unknown>;
         const loc = maneuver.location as [number, number];
@@ -135,10 +166,10 @@ async function getWalkingRoute(from: LatLng, to: LatLng) {
         const modifier = (maneuver.modifier as string) ?? "straight";
         return {
           instruction: makeInstruction(type, modifier, (s.name as string) ?? ""),
-          distanceM:   Math.round(s.distance as number),
-          durationSecs:Math.round(s.duration as number),
-          maneuverLat: loc[1],
-          maneuverLng: loc[0],
+          distanceM:    Math.round(s.distance as number),
+          durationSecs: Math.round(s.duration as number),
+          maneuverLat:  loc[1],
+          maneuverLng:  loc[0],
           type,
           modifier,
           icon: makeIcon(type, modifier),
@@ -156,7 +187,47 @@ async function getWalkingRoute(from: LatLng, to: LatLng) {
   }
 }
 
-// ─── Analytics helper ─────────────────────────────────────────────────────────
+// ─── Route finding: BFS — one DB query, guaranteed shortest path ──────────────
+type RouteRowFull = {
+  id: string; originId: string; destinationId: string;
+  transitType: string; estimatedFare: number; durationMins: number; whatToLookFor: string;
+  origin: DbLocation; destination: DbLocation;
+};
+
+async function findRoute(boardingId: string, alightingId: string): Promise<RouteRowFull[] | null> {
+  if (boardingId === alightingId) return [];
+
+  // Load entire route graph once
+  const allRoutes = await prisma.route.findMany({
+    include: { origin: true, destination: true },
+  }) as RouteRowFull[];
+
+  // Adjacency list
+  const adj = new Map<string, RouteRowFull[]>();
+  for (const r of allRoutes) {
+    if (!adj.has(r.originId)) adj.set(r.originId, []);
+    adj.get(r.originId)!.push(r);
+  }
+
+  // BFS — finds the fewest-hop path
+  const visited = new Set<string>([boardingId]);
+  const queue: { path: RouteRowFull[]; node: string }[] = [{ path: [], node: boardingId }];
+
+  while (queue.length) {
+    const { path, node } = queue.shift()!;
+    for (const edge of adj.get(node) ?? []) {
+      if (visited.has(edge.destinationId)) continue;
+      const newPath = [...path, edge];
+      if (edge.destinationId === alightingId) return newPath;
+      visited.add(edge.destinationId);
+      queue.push({ path: newPath, node: edge.destinationId });
+    }
+  }
+
+  return null; // no connected path in graph
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
 function logSearch(destination: string, found: boolean, userLat?: number, userLng?: number) {
   prisma.searchLog.create({
     data: {
@@ -165,7 +236,7 @@ function logSearch(destination: string, found: boolean, userLat?: number, userLn
       userLat: userLat ?? null,
       userLng: userLng ?? null,
     },
-  }).catch(() => { /* never break the app over analytics */ });
+  }).catch(() => {});
 }
 
 // ─── Route handler ────────────────────────────────────────────────────────────
@@ -175,8 +246,8 @@ export async function POST(req: NextRequest) {
     if (!destination)
       return NextResponse.json({ error: "destination is required" }, { status: 400 });
 
-    // Geocode the "from" address if provided, otherwise use GPS coords
-    let userCoords: LatLng = { lat: userLat ?? 5.6863, lng: userLng ?? -0.1488 };
+    // Resolve user coordinates — default to Accra Central when nothing else known
+    let userCoords: LatLng = { lat: userLat ?? 5.5698, lng: userLng ?? -0.2184 };
     if (fromAddress) {
       const geocoded = await geocodeGhana(fromAddress);
       if (!geocoded)
@@ -187,86 +258,71 @@ export async function POST(req: NextRequest) {
       userCoords = geocoded;
     }
 
-    const destCoords = await geocodeGhana(destination);
-    if (!destCoords) {
-      logSearch(destination, false, userLat, userLng);
-      return NextResponse.json(
-        { error: `Couldn't find "${destination}" in Ghana. Try a landmark or area name.` },
-        { status: 404 }
-      );
-    }
-
     const locations = await prisma.location.findMany();
 
-    const boardingStop = locations
-      .map((l) => ({ ...l, dist: distanceM(userCoords, { lat: l.latitude, lng: l.longitude }) }))
-      .sort((a, b) => a.dist - b.dist)[0];
+    // ── Boarding stop: nearest seeded location to user ────────────────────────
+    const boardingStop = nearestLocation(locations, userCoords);
 
-    const alightingStop = locations
-      .map((l) => ({ ...l, dist: distanceM(destCoords, { lat: l.latitude, lng: l.longitude }) }))
-      .sort((a, b) => a.dist - b.dist)[0];
+    // ── Alighting stop: match our DB by name FIRST — never trust Nominatim ────
+    let alightingStop: DbLocation;
+    let destCoords: LatLng;
 
+    const dbMatch = matchLocationByName(locations, destination);
+    if (dbMatch) {
+      alightingStop = dbMatch;
+      destCoords = { lat: dbMatch.latitude, lng: dbMatch.longitude };
+    } else {
+      // Unknown place — geocode and find nearest stop
+      const geocoded = await geocodeGhana(destination);
+      if (!geocoded) {
+        logSearch(destination, false, userLat, userLng);
+        return NextResponse.json(
+          { error: `Couldn't find "${destination}" in Ghana. Try a landmark or area name.` },
+          { status: 404 }
+        );
+      }
+      destCoords = geocoded;
+      alightingStop = nearestLocation(locations, destCoords);
+    }
+
+    // ── Walking route to boarding stop ────────────────────────────────────────
     const walking = await getWalkingRoute(userCoords, {
       lat: boardingStop.latitude,
       lng: boardingStop.longitude,
     });
 
-    const walkDistM  = walking?.distanceM  ?? Math.round(boardingStop.dist);
+    const walkDistM  = walking?.distanceM  ?? Math.round(distanceM(userCoords, { lat: boardingStop.latitude, lng: boardingStop.longitude }));
     const walkMins   = walking?.durationMins ?? Math.max(1, Math.round(walkDistM / 80));
 
-    let trotroLeg1 = null, trotroLeg2 = null;
-    if (boardingStop.id !== alightingStop.id) {
-      trotroLeg1 = await prisma.route.findFirst({
-        where: { originId: boardingStop.id, destinationId: alightingStop.id },
-        include: { origin: true, destination: true },
-      });
-      if (!trotroLeg1) {
-        const firstLegs = await prisma.route.findMany({
-          where: { originId: boardingStop.id },
-          include: { origin: true, destination: true },
-        });
-        for (const l1 of firstLegs) {
-          const l2 = await prisma.route.findFirst({
-            where: { originId: l1.destinationId, destinationId: alightingStop.id },
-            include: { origin: true, destination: true },
-          });
-          if (l2) { trotroLeg1 = l1; trotroLeg2 = l2; break; }
-        }
-      }
-    }
+    // ── Trotro route: BFS finds shortest path, any number of hops ────────────
+    const routeLegs = boardingStop.id !== alightingStop.id
+      ? await findRoute(boardingStop.id, alightingStop.id)
+      : [];
 
-    logSearch(destination, !!trotroLeg1, userLat, userLng);
+    logSearch(destination, !!(routeLegs && routeLegs.length > 0), userLat, userLng);
+
+    const legs: TrotroLeg[] = (routeLegs ?? []).map((r) => ({
+      from:          r.origin.name,
+      to:            r.destination.name,
+      whatToLookFor: r.whatToLookFor,
+      fare:          r.estimatedFare,
+      durationMins:  r.durationMins,
+      transitType:   r.transitType,
+    }));
 
     return NextResponse.json({
       destCoords,
       boardingStop: {
-        name: boardingStop.name,
-        lat: boardingStop.latitude,
-        lng: boardingStop.longitude,
+        name:        boardingStop.name,
+        lat:         boardingStop.latitude,
+        lng:         boardingStop.longitude,
         description: boardingStop.description,
-        distanceM: walkDistM,
+        distanceM:   walkDistM,
         walkingMins: walkMins,
       },
       walkingGeoJSON: walking?.geometry ?? null,
-      steps: walking?.steps ?? [],
-      trotro: trotroLeg1 ? {
-        leg1: {
-          from: trotroLeg1.origin.name,
-          to:   trotroLeg1.destination.name,
-          whatToLookFor: trotroLeg1.whatToLookFor,
-          fare: trotroLeg1.estimatedFare,
-          durationMins: trotroLeg1.durationMins,
-          transitType:  trotroLeg1.transitType,
-        },
-        leg2: trotroLeg2 ? {
-          from: trotroLeg2.origin.name,
-          to:   trotroLeg2.destination.name,
-          whatToLookFor: trotroLeg2.whatToLookFor,
-          fare: trotroLeg2.estimatedFare,
-          durationMins: trotroLeg2.durationMins,
-          transitType:  trotroLeg2.transitType,
-        } : null,
-      } : null,
+      steps:          walking?.steps ?? [],
+      trotro: legs.length > 0 ? { legs } : null,
     } satisfies DirectionsResponse);
   } catch (err) {
     console.error("Directions error:", err);
