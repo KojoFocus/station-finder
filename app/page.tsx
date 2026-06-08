@@ -530,18 +530,15 @@ export default function HomePage() {
   useEffect(() => { langRef.current    = lang;    }, [lang]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
-  // Auto-collapse map after first user message
+  // Auto-collapse map 3 seconds after app opens
   useEffect(() => {
-    const userCount = msgs.filter(m => m.from === "user").length;
-    if (userCount >= 1 && !mapMini && !navigating) {
-      const t = setTimeout(() => {
-        setMapMini(true);
-        setTimeout(() => setShowMiniBtn(true), 480);
-      }, 300);
-      return () => clearTimeout(t);
-    }
+    const t = setTimeout(() => {
+      setMapMini(true);
+      setTimeout(() => setShowMiniBtn(true), 480);
+    }, 3000);
+    return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgs.length]);
+  }, []);
 
   // Re-expand map when navigating starts
   useEffect(() => {
