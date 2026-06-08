@@ -729,8 +729,8 @@ export default function HomePage() {
     const onGpsDenied = () => {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
       botSay(
-        { type: "text", text: "Location access is off. No problem — just tell me where you are and where you're headed." },
-        { type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] },
+        { type: "text", text: "Location is turned off. To enable it: tap the 🔒 icon in your browser's address bar → **Site settings** → set **Location** to Allow. Then tap the button below." },
+        { type: "chips", chips: [{ label: "📍 Try again", action: "retry_gps" }] },
       );
     };
 
@@ -1151,9 +1151,12 @@ export default function HomePage() {
       navigator.geolocation?.getCurrentPosition(
         (p) => {
           setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
-          botSay({ type: "text", text: "Got your location 📍 Where are you headed?" });
+          botSay({ type: "text", text: "📍 Got your location. Where are you heading?" });
         },
-        () => botSay({ type: "text", text: "Still blocked. Enable location in browser settings and refresh." }),
+        () => botSay({
+          type: "text",
+          text: "Still blocked. Tap the 🔒 in your browser bar → **Site settings** → **Location** → Allow — then refresh the page.",
+        }),
         { timeout: 10000, enableHighAccuracy: true }
       );
     }
@@ -1271,8 +1274,8 @@ export default function HomePage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
-          {/* Welcome back card — shown on fresh chat when history exists */}
-          {msgs.filter(m => m.from === "user").length === 0 && (recentSearches.length > 0 || starred.length > 0 || homePlace || workPlace) && (
+          {/* Welcome back card — shown on fresh chat when shortcuts exist */}
+          {msgs.filter(m => m.from === "user").length === 0 && (starred.length > 0 || homePlace || workPlace) && (
             <div className="flex flex-col gap-3">
               <p className="text-content-secondary text-sm font-medium">Akwaaba back 👋</p>
 
@@ -1318,26 +1321,6 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* Last route */}
-              {recentSearches.length > 0 && (
-                <div className="bg-surface-card border border-stroke rounded-2xl overflow-hidden">
-                  <div className="px-4 pt-3.5 pb-1">
-                    <p className="text-content-disabled text-[9px] uppercase tracking-widest">Your last route</p>
-                    <p className="text-content-primary font-semibold text-sm mt-1">
-                      {recentSearches[0].origin.split(" ")[0]}
-                      <span className="text-content-muted font-normal"> → </span>
-                      {recentSearches[0].destination.charAt(0).toUpperCase() + recentSearches[0].destination.slice(1)}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => send(`From ${recentSearches[0].origin} to ${recentSearches[0].destination}`)}
-                    disabled={processing}
-                    className="w-full px-4 py-3 text-left text-xs text-accent font-semibold border-t border-stroke active:bg-accent/10 transition-colors disabled:opacity-40"
-                  >
-                    Go again →
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
