@@ -492,7 +492,6 @@ export default function HomePage() {
   const [mapMini,         setMapMini]        = useState(false);
   const [showMiniBtn,     setShowMiniBtn]    = useState(false);
   const [pendingClarification, setPendingClarification] = useState<{ destination: string; origin?: string } | null>(null);
-  const [recentSearches,  setRecentSearches] = useState<{ id: string; origin: string; destination: string }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [installPrompt,   setInstallPrompt]  = useState<any>(null);
   const [showInstall,     setShowInstall]    = useState(false);
@@ -556,10 +555,7 @@ export default function HomePage() {
       localStorage.setItem(KEY, id);
     }
     setDeviceId(id);
-    fetch(`/api/history?id=${encodeURIComponent(id)}`)
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setRecentSearches(data); })
-      .catch(() => {});
+    fetch(`/api/history?id=${encodeURIComponent(id)}`).catch(() => {});
     // Load starred routes from localStorage
     try {
       const saved = JSON.parse(localStorage.getItem("sf_starred") ?? "[]");
@@ -726,8 +722,11 @@ export default function HomePage() {
     const onGpsDenied = () => {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
       botSay(
-        { type: "text", text: "Location is turned off. To enable it: tap the 🔒 icon in your browser's address bar → **Site settings** → set **Location** to Allow. Then tap the button below." },
-        { type: "chips", chips: [{ label: "📍 Try again", action: "retry_gps" }] },
+        { type: "text", text: "Location is off. Turn it on in your settings, or just tell me where you are and I'll work from there." },
+        { type: "chips", chips: [
+          { label: "📍 Try again", action: "retry_gps" },
+          { label: "I'll type my location", action: "dismiss" },
+        ]},
       );
     };
 
@@ -855,15 +854,8 @@ export default function HomePage() {
         setShowInstall(true);
       }
 
-      // Save to history (fire-and-forget) + update local state immediately
+      // Save to history (fire-and-forget)
       if (deviceId) {
-        const entry = { id: Date.now().toString(), origin: data.boardingStop.name, destination };
-        setRecentSearches((prev) => {
-          const filtered = prev.filter(
-            (s) => !(s.origin.toLowerCase() === entry.origin.toLowerCase() && s.destination.toLowerCase() === destination.toLowerCase())
-          );
-          return [entry, ...filtered].slice(0, 5);
-        });
         fetch("/api/history", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1152,7 +1144,7 @@ export default function HomePage() {
         },
         () => botSay({
           type: "text",
-          text: "Still blocked. Tap the 🔒 in your browser bar → **Site settings** → **Location** → Allow — then refresh the page.",
+          text: "Still off. Go to your phone settings and allow location for this browser, or just tell me where you are.",
         }),
         { timeout: 10000, enableHighAccuracy: true }
       );

@@ -181,12 +181,25 @@ export default function RouteMap({
   }, []);
 
   // ── User location + smooth follow with heading ────────────────────────────
+  const hasCenteredRef = useRef(false);
+
   useEffect(() => {
     if (!userLocation) return;
     const run = () => {
       if (!mapRef.current) return;
       import("mapbox-gl").then((mod) => {
         const mapboxgl = mod.default;
+
+        // First time we get the user's location: fly to it
+        if (!hasCenteredRef.current) {
+          hasCenteredRef.current = true;
+          mapRef.current.flyTo({
+            center: [userLocation.lng, userLocation.lat],
+            zoom: 14,
+            duration: 1200,
+            essential: true,
+          });
+        }
 
         // Update bearing from movement
         if (prevLocRef.current) {
