@@ -1231,10 +1231,10 @@ export default function HomePage() {
         aria-label="Expand map"
         className="fixed z-40 w-14 h-14 rounded-2xl bg-surface-card border border-stroke shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-90"
         style={{
-          top: '56px', right: '12px',
-          transform: showMiniBtn ? 'scale(1)' : 'scale(0)',
+          top: '56px', left: '50%',
+          transform: showMiniBtn ? 'translateX(-50%) scale(1)' : 'translateX(-50%) scale(0)',
           opacity: showMiniBtn ? 1 : 0,
-          transformOrigin: 'top right',
+          transformOrigin: 'top center',
           transition: showMiniBtn
             ? 'transform 380ms cubic-bezier(0.34,1.56,0.64,1), opacity 200ms'
             : 'transform 200ms ease-in, opacity 150ms',
