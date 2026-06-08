@@ -304,7 +304,15 @@ function StationsCard({ options, onSelect }: {
             <p className="text-content-disabled text-[9px] uppercase tracking-widest">Journey</p>
             <p className="text-content-primary font-bold text-lg">~{isIntercity ? opt.legs.reduce((s,l)=>s+l.durationMins,0) : opt.totalMins} min</p>
           </div>
-          {!isIntercity && (
+          {isIntercity ? (
+            <>
+              <div className="w-px h-8 bg-stroke" />
+              <div>
+                <p className="text-content-disabled text-[9px] uppercase tracking-widest">From you</p>
+                <p className="text-content-primary font-bold text-lg">{formatDist(opt.boardingStop.distanceM)}</p>
+              </div>
+            </>
+          ) : (
             <>
               <div className="w-px h-8 bg-stroke" />
               <div>

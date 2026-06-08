@@ -521,11 +521,14 @@ export async function POST(req: NextRequest) {
     const stationOptions: StationOption[] = [];
 
     if (isIntercity) {
-      // Terminal options — intercity fare and time ONLY, no local hops added
+      // Terminal options — intercity fare and time ONLY, no local hops added.
+      // Filter to terminals within 80 km of the user so we only show Accra-area
+      // departure points (excludes e.g. Tamale→Bolgatanga routes).
       for (const busRoute of directIntercityRoutes) {
         const terminal = locMap.get(busRoute.originId);
         if (!terminal) continue;
         const wd = Math.round(distM(userCoords, { lat: terminal.latitude, lng: terminal.longitude }));
+        if (wd > 80000) continue; // terminal is not near the user — skip
         const wm = Math.max(1, Math.round(wd / 80));
         stationOptions.push({
           boardingStop: { name: terminal.name, lat: terminal.latitude, lng: terminal.longitude, description: terminal.description, distanceM: wd, walkingMins: wm },
