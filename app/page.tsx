@@ -1257,7 +1257,7 @@ export default function HomePage() {
       </button>
 
       {/* Chat sheet */}
-      <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)]">
+      <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)] relative">
         <div className="mx-auto w-8 h-1 bg-stroke rounded-full mt-2.5 mb-1 shrink-0" />
 
         {/* Offline banner */}
@@ -1490,13 +1490,15 @@ export default function HomePage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Autocomplete suggestions */}
+        {/* Autocomplete suggestions — absolute overlay floating above the input bar */}
         {showSuggestions && suggestions.length > 0 && (
-          <div className="shrink-0 mx-4 mb-1 bg-surface-card border border-stroke rounded-2xl overflow-hidden">
+          <div className="absolute bottom-[80px] left-4 right-4 z-20 bg-surface-card border border-stroke rounded-2xl shadow-2xl overflow-hidden">
             {suggestions.map((name) => (
               <button key={name} onMouseDown={(e) => { e.preventDefault(); send(name); setSuggestions([]); setShowSuggestions(false); }}
                 className="w-full flex items-center gap-3 px-4 py-3 border-b border-stroke last:border-0 active:bg-surface-elevated transition-colors text-left">
-                <span className="text-content-muted text-sm">📍</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="text-content-muted shrink-0">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
                 <span className="text-content-primary text-[13px]">{name}</span>
               </button>
             ))}
