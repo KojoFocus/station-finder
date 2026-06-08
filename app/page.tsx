@@ -188,154 +188,77 @@ function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
 function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | null }) {
-  const [tab,      setTab]      = useState<"primary" | "alt">("primary");
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
-  const hasAlt  = !!result.alternateTrotro;
-  const primary = result.trotro?.legs ?? [];
-  const altLegs = result.alternateTrotro?.legs ?? [];
-  const legs    = tab === "alt" && hasAlt ? altLegs : primary;
-
-  const trotroMins = legs.reduce((s, l) => s + l.durationMins, 0);
-  const totalMins  = result.boardingStop.walkingMins + trotroMins + (result.finalWalk?.walkingMins ?? 0);
-  const totalFare  = tab === "alt" && result.alternateTrotro ? result.alternateTrotro.totalFare : (fare ?? 0);
-  const transitType = legs[0]?.transitType ?? "Trotro";
-  const isIntercity = transitType === "Intercity Bus";
-  const destName   = legs.at(-1)?.to ?? "Destination";
-
-  const rushHour = (() => { const h = new Date().getHours(); return (h >= 6 && h < 9) || (h >= 16 && h < 20); })();
+  const legs        = result.trotro?.legs ?? [];
+  const isIntercity = legs[0]?.transitType === "Intercity Bus";
+  const destName    = legs.at(-1)?.to ?? "Destination";
+  const totalFare   = fare ?? 0;
+  const rideMins    = legs.reduce((s, l) => s + l.durationMins, 0);
+  const totalMins   = isIntercity ? rideMins : (result.boardingStop.walkingMins + rideMins + (result.finalWalk?.walkingMins ?? 0));
+  const rushHour    = (() => { const h = new Date().getHours(); return (h >= 6 && h < 9) || (h >= 16 && h < 20); })();
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-stroke bg-surface-card w-full">
+    <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
 
-      {/* Direct / Multi-Hop toggle — only when alternate exists */}
-      {hasAlt && (
-        <div className="flex gap-2 px-3 pt-3 pb-0">
-          {(["primary", "alt"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
-                tab === t ? "bg-accent text-white" : "text-content-secondary border border-stroke"
-              }`}>
-              {t === "primary" ? `Fastest · ~${result.trotro!.totalMins} min` : `Fewer hops · ~${result.alternateTrotro!.totalMins} min`}
-            </button>
-          ))}
+      {/* Header: FROM → TO */}
+      <div className="flex items-center gap-2 px-4 py-3.5 border-b border-stroke">
+        <div className="flex-1 min-w-0">
+          <p className="text-content-primary font-bold text-[15px] leading-tight truncate">
+            {isIntercity ? result.boardingStop.name : result.boardingStop.name}
+          </p>
+          <p className="text-content-muted text-xs mt-0.5">→ {destName}</p>
         </div>
-      )}
+        <div className="text-right shrink-0">
+          <p className="text-accent font-black text-xl tabular-nums">{totalFare > 0 ? fareRange(totalFare) : "—"}</p>
+          <p className="text-content-muted text-[11px]">~{totalMins} min</p>
+        </div>
+      </div>
 
-      {/* Transit badge + stop count */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <span className="flex items-center gap-1.5 bg-accent/15 text-accent text-[11px] font-bold px-3 py-1.5 rounded-full">
-          🚐 {isIntercity ? "INTERCITY BUS" : "TROTRO"}
-        </span>
-        {legs.length > 1 && (
-          <span className="text-content-muted text-[11px] border border-stroke rounded-full px-3 py-1.5">
-            {legs.length} stops
-          </span>
+      {/* Key info */}
+      <div className="px-4 py-3.5">
+        <p className="text-content-secondary text-[13px] leading-relaxed">
+          {legs[0]?.whatToLookFor}
+        </p>
+
+        {!isIntercity && (
+          <p className="text-content-muted text-xs mt-2">
+            🚶 {formatDist(result.boardingStop.distanceM)} walk · {result.boardingStop.walkingMins} min from you
+          </p>
+        )}
+
+        {rushHour && (
+          <p className="text-[#f0c040]/80 text-xs mt-2">⏰ Fares may be higher during rush hour</p>
         )}
       </div>
 
-      {/* FROM → TO */}
-      <div className="flex items-center gap-3 px-4 pb-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-content-muted text-[9px] uppercase tracking-widest">FROM</p>
-          <p className="text-content-primary font-bold text-[15px] leading-snug truncate">{result.boardingStop.name}</p>
-        </div>
-        <div className="flex items-center shrink-0">
-          <div className="w-6 h-px bg-stroke" />
-          <span className="text-accent mx-1.5 text-sm">→</span>
-          <div className="w-6 h-px bg-stroke" />
-        </div>
-        <div className="flex-1 min-w-0 text-right">
-          <p className="text-content-muted text-[9px] uppercase tracking-widest">TO</p>
-          <p className="text-content-primary font-bold text-[15px] leading-snug truncate">{destName}</p>
-        </div>
-      </div>
-
-      {/* Stats grid: FARE · DURATION · SEATS */}
-      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
-        {[
-          { label: "FARE",     value: totalFare > 0 ? fareRange(totalFare) : "—"  },
-          { label: "DURATION", value: `~${totalMins} min`                       },
-          { label: "SEATS",    value: isIntercity ? "Book ahead" : "Shared"     },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-raised rounded-xl px-3 py-2.5">
-            <p className="text-content-muted text-[9px] uppercase tracking-widest">{label}</p>
-            <p className="text-content-primary font-bold text-sm mt-1 leading-tight">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* HOW TO BOARD */}
-      <div className="px-4 pb-4 border-t border-stroke pt-4">
-        <p className="text-content-muted text-[9px] uppercase tracking-widest mb-3">HOW TO BOARD</p>
-        <div className="space-y-3">
-          {legs[0]?.whatToLookFor && (
-            <div className="flex gap-3 items-start">
-              <div className="w-8 h-8 rounded-full bg-[#f0c040]/15 flex items-center justify-center shrink-0">
-                <span className="text-sm">🔊</span>
-              </div>
-              <div className="min-w-0">
-                <p className="text-content-muted text-[10px]">Listen for</p>
-                <p className="text-content-primary text-[13px] font-medium leading-snug">"{legs[0].whatToLookFor}"</p>
-              </div>
+      {/* Expandable breakdown — only for multi-leg or intercity */}
+      {legs.length > 1 && (
+        <div className="border-t border-stroke">
+          <button onClick={() => setExpanded(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 active:opacity-60">
+            <p className="text-content-disabled text-[10px] uppercase tracking-widest">
+              {legs.length} legs · tap to {expanded ? "collapse" : "expand"}
+            </p>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+              className={`text-content-disabled transition-transform ${expanded ? "rotate-180" : ""}`}>
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          {expanded && (
+            <div className="px-4 pb-3 space-y-2">
+              {legs.map((leg, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                  <p className="text-content-primary text-[12px] flex-1 truncate">{leg.from} → {leg.to}</p>
+                  <p className="text-content-muted text-[11px] shrink-0">~{leg.durationMins} min</p>
+                  <p className="text-content-primary text-[12px] font-semibold shrink-0 tabular-nums">₵{leg.fare.toFixed(2)}</p>
+                </div>
+              ))}
             </div>
           )}
-          <div className="flex gap-3 items-start">
-            <div className="w-8 h-8 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
-              <span className="text-sm">📍</span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-content-muted text-[10px]">Where to stand</p>
-              <p className="text-content-primary text-[13px] leading-snug">{result.boardingStop.description}</p>
-            </div>
-          </div>
-          <div className="flex gap-3 items-start">
-            <div className="w-8 h-8 rounded-full bg-raised flex items-center justify-center shrink-0">
-              <span className="text-sm">🚶</span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-content-muted text-[10px]">Walk from you</p>
-              <p className="text-content-primary text-[13px]">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
-            </div>
-          </div>
         </div>
-      </div>
-
-      {/* JOURNEY BREAKDOWN */}
-      <div className="border-t border-stroke">
-        <button onClick={() => setExpanded(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 active:opacity-60">
-          <p className="text-[9px] uppercase tracking-widest text-content-muted font-bold">Journey Breakdown</p>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-            className={`text-content-muted transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}>
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-
-        {expanded && (
-          <div className="px-4 pb-4 space-y-2.5">
-            {legs.map((leg, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                <p className="text-content-primary text-[13px] flex-1 truncate">{leg.from} → {leg.to}</p>
-                <p className="text-content-muted text-xs shrink-0">~{leg.durationMins} min</p>
-                <p className="text-content-primary text-[13px] font-semibold shrink-0 tabular-nums">₵{leg.fare.toFixed(2)}</p>
-              </div>
-            ))}
-            {result.finalWalk && (
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-content-muted shrink-0" />
-                <p className="text-content-secondary text-[13px] flex-1">Walk to destination</p>
-                <p className="text-content-muted text-xs">{formatDist(result.finalWalk.distanceM)}</p>
-              </div>
-            )}
-            <div className="flex items-center justify-between pt-1 border-t border-stroke">
-              <p className="text-content-disabled text-[10px]">Fares may vary slightly</p>
-              {rushHour && <p className="text-[#f0c040]/70 text-[10px]">⏰ Rush hour — fares may be higher</p>}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -346,61 +269,69 @@ function StationsCard({ options, onSelect }: {
   options: StationOption[];
   onSelect: (opt: StationOption) => void;
 }) {
+  const [idx, setIdx] = useState(0);
+  const opt = options[idx];
+  const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
+
   return (
-    <div className="rounded-2xl overflow-hidden border border-stroke bg-surface-card w-full">
-      <div className="px-4 py-3 border-b border-stroke flex items-center justify-between">
-        <div>
-          <p className="text-content-primary text-sm font-semibold">
-            {options.length} stations serve this route
-          </p>
-          <p className="text-content-muted text-[10px] mt-0.5">Sorted by total journey time · wait included</p>
+    <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
+      {/* Dot indicator */}
+      {options.length > 1 && (
+        <div className="flex items-center justify-between px-4 pt-3 pb-0">
+          <p className="text-content-disabled text-[10px]">{idx + 1} of {options.length}</p>
+          <div className="flex gap-1.5">
+            {options.map((_, i) => (
+              <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === idx ? "bg-accent" : "bg-stroke"}`} />
+            ))}
+          </div>
         </div>
-        <span className="text-lg">🏆</span>
+      )}
+
+      <div className="px-4 py-4">
+        {/* Station name */}
+        <p className="text-content-primary font-bold text-base leading-snug">{opt.boardingStop.name}</p>
+
+        {/* Fare + time */}
+        <div className="flex items-center gap-4 mt-3">
+          <div>
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Fare</p>
+            <p className="text-content-primary font-bold text-lg tabular-nums">{fareRange(opt.totalFare)}</p>
+          </div>
+          <div className="w-px h-8 bg-stroke" />
+          <div>
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Journey</p>
+            <p className="text-content-primary font-bold text-lg">~{isIntercity ? opt.legs.reduce((s,l)=>s+l.durationMins,0) : opt.totalMins} min</p>
+          </div>
+          {!isIntercity && (
+            <>
+              <div className="w-px h-8 bg-stroke" />
+              <div>
+                <p className="text-content-disabled text-[9px] uppercase tracking-widest">Walk</p>
+                <p className="text-content-primary font-bold text-lg">{opt.boardingStop.walkingMins} min</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Boarding note */}
+        <p className="text-content-secondary text-xs mt-3 leading-relaxed">
+          {opt.legs[0]?.whatToLookFor}
+        </p>
       </div>
 
-      {options.map((opt, i) => {
-        const rideM = opt.legs.reduce((s, l) => s + l.durationMins, 0);
-        const isBest = i === 0;
-        return (
-          <div key={opt.boardingStop.name}
-            className={`px-4 py-4 border-b border-stroke last:border-0 ${isBest ? "bg-accent/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  {isBest && (
-                    <span className="text-[9px] bg-accent/20 text-accent px-2 py-0.5 rounded-full font-bold uppercase tracking-wide shrink-0">
-                      Best
-                    </span>
-                  )}
-                  <p className="text-content-primary font-semibold text-[13px] truncate">
-                    {opt.boardingStop.name}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span className="text-content-muted text-[11px]">🚶 {opt.boardingStop.walkingMins} min walk</span>
-                  <span className="text-content-muted text-[11px]">⏳ ~{opt.estimatedWaitMins} min wait</span>
-                  <span className="text-content-muted text-[11px]">🚐 {rideM} min ride</span>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <p className={`font-bold text-sm ${isBest ? "text-accent" : "text-content-primary"}`}>
-                  ~{opt.totalMins} min
-                </p>
-                <p className="text-content-muted text-[11px] tabular-nums">{fareRange(opt.totalFare)}</p>
-              </div>
-            </div>
-            <button onClick={() => onSelect(opt)}
-              className={`mt-3 w-full py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
-                isBest
-                  ? "bg-accent text-white"
-                  : "border border-stroke text-content-secondary hover:border-accent/40"
-              }`}>
-              {isBest ? "Use this station →" : "See this route →"}
-            </button>
-          </div>
-        );
-      })}
-      <p className="px-4 py-2 text-content-disabled text-[9px]">Wait times estimated from time of day and route frequency</p>
+      {/* Actions */}
+      <div className="flex gap-2 px-4 pb-4">
+        <button onClick={() => onSelect(opt)}
+          className="flex-1 py-2.5 rounded-xl bg-accent text-white text-xs font-semibold active:scale-95 transition-all">
+          Use this →
+        </button>
+        {options.length > 1 && (
+          <button onClick={() => setIdx((idx + 1) % options.length)}
+            className="px-4 py-2.5 rounded-xl border border-stroke text-content-secondary text-xs active:scale-95 transition-all">
+            Next
+          </button>
+        )}
+      </div>
     </div>
   );
 }
