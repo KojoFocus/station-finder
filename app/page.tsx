@@ -21,9 +21,11 @@ interface StationOption {
   estimatedWaitMins: number;
   totalMins: number;
   totalFare: number;
+  trafficNote: string | null;
 }
 interface DirectionsResult {
   routeFound: boolean;
+  isIntercity: boolean;
   aiGuidance: string | null;
   alternateTrotro: AlternateRoute | null;
   stationOptions: StationOption[];
@@ -313,10 +315,10 @@ function StationsCard({ options, onSelect }: {
           )}
         </div>
 
-        {/* Boarding note */}
-        <p className="text-content-secondary text-xs mt-3 leading-relaxed">
-          {opt.legs[0]?.whatToLookFor}
-        </p>
+        {/* Traffic note */}
+        {opt.trafficNote && (
+          <p className="text-[#f0c040]/80 text-xs mt-3">⚠ {opt.trafficNote}</p>
+        )}
       </div>
 
       {/* Actions */}
@@ -719,7 +721,23 @@ export default function HomePage() {
         setProcessing(false); return;
       }
 
-      // Station Intelligence — show comparison when multiple boarding options exist
+      // ── Intercity: show terminal options only — no local route card ──────────
+      if (data.isIntercity) {
+        const opts = data.stationOptions ?? [];
+        if (opts.length > 0) {
+          // Brief summary text before the card
+          const summary = opts.length === 1
+            ? `There's one terminal serving that route — **${opts[0].boardingStop.name}**.`
+            : `I found ${opts.length} terminals with buses to **${destination}**. Here's a comparison — tap Next to browse.`;
+          await botSay({ type: "text", text: summary });
+          addMsg({ from: "bot", type: "stations", stationOptions: opts });
+        } else if (data.aiGuidance) {
+          await botSay({ type: "text", text: data.aiGuidance });
+        }
+        setProcessing(false); return;
+      }
+
+      // ── Local: show station options then route card ───────────────────────────
       if (data.stationOptions && data.stationOptions.length > 1) {
         setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
         await new Promise<void>(r => setTimeout(r, 600));
@@ -976,6 +994,14 @@ export default function HomePage() {
     vibrate();
     if (action.startsWith("dest:"))      { send(action.slice(5)); return; }
     if (action === "retry_last")         { const l = lastSearchRef.current; if (l) search(l.destination, l.fromAddress, l.coords); return; }
+    if (action === "dismiss")            { return; }
+    if (action.startsWith("trotro_to:")) {
+      const terminal = action.slice(10);
+      if (userLoc)      search(terminal, undefined, userLoc);
+      else if (knownOrigin) search(terminal, knownOrigin);
+      else { setPendingDest(terminal); botSay({ type: "text", text: "Where are you coming from?" }); }
+      return;
+    }
     if (action === "go_home")            { if (homePlace) send(homePlace.name); return; }
     if (action === "go_work")            { if (workPlace) send(workPlace.name); return; }
     if (action.startsWith("save_home:")) {
@@ -1266,8 +1292,22 @@ export default function HomePage() {
                     <StationsCard
                       options={msg.stationOptions}
                       onSelect={(opt) => {
-                        const dest = lastSearchRef.current?.destination;
-                        if (dest) search(dest, opt.boardingStop.name);
+                        const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
+                        if (isIntercity) {
+                          const dest = lastSearchRef.current?.destination ?? "your destination";
+                          const hrs  = Math.round(opt.legs[0].durationMins / 60 * 10) / 10;
+                          botSay(
+                            { type: "text", text: `**${opt.boardingStop.name}** — ${fareRange(opt.totalFare)} · ~${hrs} hr${hrs !== 1 ? "s" : ""} to ${dest}.` },
+                            { type: "text", text: `Want me to find a trotro to get you to **${opt.boardingStop.name}**?` },
+                            { type: "chips", chips: [
+                              { label: "Yes, find me a trotro →", action: `trotro_to:${opt.boardingStop.name}` },
+                              { label: "I'll find my own way", action: "dismiss" },
+                            ]},
+                          );
+                        } else {
+                          const dest = lastSearchRef.current?.destination;
+                          if (dest) search(dest, opt.boardingStop.name);
+                        }
                       }}
                     />
                   )}

@@ -38,10 +38,12 @@ export interface StationOption {
   estimatedWaitMins: number;
   totalMins: number;
   totalFare: number;
+  trafficNote: string | null;
 }
 
 export interface DirectionsResponse {
   routeFound: boolean;
+  isIntercity: boolean;
   aiGuidance: string | null;
   alternateTrotro: AlternateRoute | null;
   stationOptions: StationOption[];
@@ -390,14 +392,21 @@ async function getWalking(from: LatLng, to: LatLng) {
   } catch { return null; }
 }
 
-// ─── Wait time estimate (proxy from route length + time of day) ───────────────
+// ─── Wait / traffic helpers ───────────────────────────────────────────────────
 function estimatedWaitMins(durationMins: number, transitType: string): number {
   if (transitType === "Intercity Bus") return 25;
   const h = new Date().getHours();
   const base = durationMins <= 20 ? 8 : durationMins <= 40 ? 15 : durationMins <= 60 ? 20 : 28;
-  if ((h >= 6 && h < 9) || (h >= 16 && h < 20)) return Math.round(base * 0.65); // rush hour
-  if (h >= 21 || h < 5)                          return Math.round(base * 1.8);  // late night
+  if ((h >= 6 && h < 9) || (h >= 16 && h < 20)) return Math.round(base * 0.65);
+  if (h >= 21 || h < 5)                          return Math.round(base * 1.8);
   return base;
+}
+
+function currentTrafficNote(): string | null {
+  const h = new Date().getHours();
+  if ((h >= 6 && h < 9) || (h >= 16 && h < 20)) return "Rush hour — allow extra time getting to the terminal";
+  if (h >= 21 || h < 5)                          return "Late night — good time to travel, roads are clear";
+  return null;
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -499,40 +508,73 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Station Intelligence: top 3 nearest boarding stops with viable routes ──
-    const stationOptions: StationOption[] = [];
-    const candidates = [...locations]
-      .filter(l => l.id !== alightingStop.id)
-      .sort((a, b) =>
-        distM(userCoords, { lat: a.latitude, lng: a.longitude }) -
-        distM(userCoords, { lat: b.latitude, lng: b.longitude })
-      )
-      .slice(0, 6);
+    // ── Station Intelligence ──────────────────────────────────────────────────
+    // For intercity destinations: find all terminals with a DIRECT bus to the
+    // destination and return ONLY the bus leg fare/time — never mix in local hops.
+    // For local trotro: find the 3 nearest stops with viable routes.
 
-    for (const cand of candidates) {
-      const path = cand.id === boardingStop.id
-        ? primary
-        : dijkstra(allRoutes, cand.id, alightingStop.id);
-      if (!path || path.length === 0) continue;
-      const optLegs: TrotroLeg[] = path.map(r => {
-        const o = locMap.get(r.originId)!;
-        const d = locMap.get(r.destinationId)!;
-        return { from: o.name, to: d.name, whatToLookFor: r.whatToLookFor, fare: r.estimatedFare, durationMins: r.durationMins, transitType: r.transitType };
-      });
-      const wd   = cand.id === boardingStop.id ? walkDistM : Math.round(distM(userCoords, { lat: cand.latitude, lng: cand.longitude }));
-      const wm   = cand.id === boardingStop.id ? walkMins  : Math.max(1, Math.round(wd / 80));
-      const wait = estimatedWaitMins(optLegs[0].durationMins, optLegs[0].transitType);
-      const ride = optLegs.reduce((s, l) => s + l.durationMins, 0);
-      stationOptions.push({
-        boardingStop: { name: cand.name, lat: cand.latitude, lng: cand.longitude, description: cand.description, distanceM: wd, walkingMins: wm },
-        legs: optLegs,
-        estimatedWaitMins: wait,
-        totalMins: wm + wait + ride,
-        totalFare: optLegs.reduce((s, l) => s + l.fare, 0),
-      });
-      if (stationOptions.length >= 3) break;
+    const directIntercityRoutes = allRoutes.filter(
+      r => r.destinationId === alightingStop.id && r.transitType === "Intercity Bus"
+    );
+    const isIntercity = directIntercityRoutes.length > 0;
+    const traffic     = currentTrafficNote();
+    const stationOptions: StationOption[] = [];
+
+    if (isIntercity) {
+      // Terminal options — intercity fare and time ONLY, no local hops added
+      for (const busRoute of directIntercityRoutes) {
+        const terminal = locMap.get(busRoute.originId);
+        if (!terminal) continue;
+        const wd = Math.round(distM(userCoords, { lat: terminal.latitude, lng: terminal.longitude }));
+        const wm = Math.max(1, Math.round(wd / 80));
+        stationOptions.push({
+          boardingStop: { name: terminal.name, lat: terminal.latitude, lng: terminal.longitude, description: terminal.description, distanceM: wd, walkingMins: wm },
+          legs: [{
+            from: terminal.name, to: alightingStop.name,
+            whatToLookFor: busRoute.whatToLookFor,
+            fare: busRoute.estimatedFare,
+            durationMins: busRoute.durationMins,
+            transitType: busRoute.transitType,
+          }],
+          estimatedWaitMins: 25,
+          totalMins: busRoute.durationMins,   // bus journey only — local travel is separate
+          totalFare: busRoute.estimatedFare,  // bus fare only
+          trafficNote: traffic,
+        });
+      }
+      // Sort by fare (cheapest first), then by terminal distance
+      stationOptions.sort((a, b) => a.totalFare - b.totalFare || a.boardingStop.distanceM - b.boardingStop.distanceM);
+    } else {
+      // Local trotro — top 3 nearest stops with routes
+      const candidates = [...locations]
+        .filter(l => l.id !== alightingStop.id)
+        .sort((a, b) => distM(userCoords, { lat: a.latitude, lng: a.longitude }) - distM(userCoords, { lat: b.latitude, lng: b.longitude }))
+        .slice(0, 6);
+
+      for (const cand of candidates) {
+        const path = cand.id === boardingStop.id ? primary : dijkstra(allRoutes, cand.id, alightingStop.id);
+        if (!path || path.length === 0) continue;
+        const optLegs: TrotroLeg[] = path.map(r => {
+          const o = locMap.get(r.originId)!;
+          const d = locMap.get(r.destinationId)!;
+          return { from: o.name, to: d.name, whatToLookFor: r.whatToLookFor, fare: r.estimatedFare, durationMins: r.durationMins, transitType: r.transitType };
+        });
+        const wd   = cand.id === boardingStop.id ? walkDistM : Math.round(distM(userCoords, { lat: cand.latitude, lng: cand.longitude }));
+        const wm   = cand.id === boardingStop.id ? walkMins  : Math.max(1, Math.round(wd / 80));
+        const wait = estimatedWaitMins(optLegs[0].durationMins, optLegs[0].transitType);
+        const ride = optLegs.reduce((s, l) => s + l.durationMins, 0);
+        stationOptions.push({
+          boardingStop: { name: cand.name, lat: cand.latitude, lng: cand.longitude, description: cand.description, distanceM: wd, walkingMins: wm },
+          legs: optLegs,
+          estimatedWaitMins: wait,
+          totalMins: wm + wait + ride,
+          totalFare: optLegs.reduce((s, l) => s + l.fare, 0),
+          trafficNote: null,
+        });
+        if (stationOptions.length >= 3) break;
+      }
+      stationOptions.sort((a, b) => a.totalMins - b.totalMins);
     }
-    stationOptions.sort((a, b) => a.totalMins - b.totalMins);
 
     logSearch(destination, legs.length > 0, userLat, userLng);
 
@@ -555,6 +597,7 @@ Write like a helpful local, not a robot. No bullet points, no markdown, no heade
     return NextResponse.json({
       routeFound: legs.length > 0,
       aiGuidance,
+      isIntercity,
       alternateTrotro,
       stationOptions,
       destCoords,
