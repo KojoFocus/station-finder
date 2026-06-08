@@ -32,10 +32,19 @@ export interface AlternateRoute {
   totalFare: number;
 }
 
+export interface StationOption {
+  boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
+  legs: TrotroLeg[];
+  estimatedWaitMins: number;
+  totalMins: number;
+  totalFare: number;
+}
+
 export interface DirectionsResponse {
   routeFound: boolean;
   aiGuidance: string | null;
   alternateTrotro: AlternateRoute | null;
+  stationOptions: StationOption[];
   destCoords: LatLng;
   boardingStop: {
     name: string; lat: number; lng: number;
@@ -381,6 +390,16 @@ async function getWalking(from: LatLng, to: LatLng) {
   } catch { return null; }
 }
 
+// ─── Wait time estimate (proxy from route length + time of day) ───────────────
+function estimatedWaitMins(durationMins: number, transitType: string): number {
+  if (transitType === "Intercity Bus") return 25;
+  const h = new Date().getHours();
+  const base = durationMins <= 20 ? 8 : durationMins <= 40 ? 15 : durationMins <= 60 ? 20 : 28;
+  if ((h >= 6 && h < 9) || (h >= 16 && h < 20)) return Math.round(base * 0.65); // rush hour
+  if (h >= 21 || h < 5)                          return Math.round(base * 1.8);  // late night
+  return base;
+}
+
 // ─── Analytics ────────────────────────────────────────────────────────────────
 function logSearch(destination: string, found: boolean, userLat?: number, userLng?: number) {
   prisma.searchLog.create({ data: { destination: destination.trim().toLowerCase().slice(0, 200), found, userLat: userLat ?? null, userLng: userLng ?? null } }).catch(() => {});
@@ -480,6 +499,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Station Intelligence: top 3 nearest boarding stops with viable routes ──
+    const stationOptions: StationOption[] = [];
+    const candidates = [...locations]
+      .filter(l => l.id !== alightingStop.id)
+      .sort((a, b) =>
+        distM(userCoords, { lat: a.latitude, lng: a.longitude }) -
+        distM(userCoords, { lat: b.latitude, lng: b.longitude })
+      )
+      .slice(0, 6);
+
+    for (const cand of candidates) {
+      const path = cand.id === boardingStop.id
+        ? primary
+        : dijkstra(allRoutes, cand.id, alightingStop.id);
+      if (!path || path.length === 0) continue;
+      const optLegs: TrotroLeg[] = path.map(r => {
+        const o = locMap.get(r.originId)!;
+        const d = locMap.get(r.destinationId)!;
+        return { from: o.name, to: d.name, whatToLookFor: r.whatToLookFor, fare: r.estimatedFare, durationMins: r.durationMins, transitType: r.transitType };
+      });
+      const wd   = cand.id === boardingStop.id ? walkDistM : Math.round(distM(userCoords, { lat: cand.latitude, lng: cand.longitude }));
+      const wm   = cand.id === boardingStop.id ? walkMins  : Math.max(1, Math.round(wd / 80));
+      const wait = estimatedWaitMins(optLegs[0].durationMins, optLegs[0].transitType);
+      const ride = optLegs.reduce((s, l) => s + l.durationMins, 0);
+      stationOptions.push({
+        boardingStop: { name: cand.name, lat: cand.latitude, lng: cand.longitude, description: cand.description, distanceM: wd, walkingMins: wm },
+        legs: optLegs,
+        estimatedWaitMins: wait,
+        totalMins: wm + wait + ride,
+        totalFare: optLegs.reduce((s, l) => s + l.fare, 0),
+      });
+      if (stationOptions.length >= 3) break;
+    }
+    stationOptions.sort((a, b) => a.totalMins - b.totalMins);
+
     logSearch(destination, legs.length > 0, userLat, userLng);
 
     // ── AI guidance fallback when DB has no route ─────────────────────────────
@@ -502,6 +556,7 @@ Write like a helpful local, not a robot. No bullet points, no markdown, no heade
       routeFound: legs.length > 0,
       aiGuidance,
       alternateTrotro,
+      stationOptions,
       destCoords,
       boardingStop: { name: boardingStop.name, lat: boardingStop.latitude, lng: boardingStop.longitude, description: boardingStop.description, distanceM: walkDistM, walkingMins: walkMins },
       alightingStop: alightingStop ? { name: alightingStop.name, lat: alightingStop.latitude, lng: alightingStop.longitude } : null,

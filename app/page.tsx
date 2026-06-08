@@ -15,10 +15,18 @@ interface TrotroLeg {
   fare: number; durationMins: number; transitType: string;
 }
 interface AlternateRoute { legs: TrotroLeg[]; totalMins: number; totalFare: number; }
+interface StationOption {
+  boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
+  legs: TrotroLeg[];
+  estimatedWaitMins: number;
+  totalMins: number;
+  totalFare: number;
+}
 interface DirectionsResult {
   routeFound: boolean;
   aiGuidance: string | null;
   alternateTrotro: AlternateRoute | null;
+  stationOptions: StationOption[];
   destCoords:   { lat: number; lng: number };
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
   alightingStop: { name: string; lat: number; lng: number } | null;
@@ -27,12 +35,13 @@ interface DirectionsResult {
   steps: NavStep[];
   trotro: { legs: TrotroLeg[]; totalMins: number; alternateNote: string | null } | null;
 }
-type MsgType = "text" | "typing" | "route" | "navstep" | "chips";
+type MsgType = "text" | "typing" | "route" | "navstep" | "chips" | "stations";
 interface Msg {
   id: string; from: "bot" | "user"; type: MsgType; text?: string;
   timestamp: Date; result?: DirectionsResult; step?: NavStep;
   chips?: { label: string; action: string }[];
   fare?: number | null;
+  stationOptions?: StationOption[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -327,6 +336,71 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── StationsCard ─────────────────────────────────────────────────────────────
+
+function StationsCard({ options, onSelect }: {
+  options: StationOption[];
+  onSelect: (opt: StationOption) => void;
+}) {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-stroke bg-surface-card w-full">
+      <div className="px-4 py-3 border-b border-stroke flex items-center justify-between">
+        <div>
+          <p className="text-content-primary text-sm font-semibold">
+            {options.length} stations serve this route
+          </p>
+          <p className="text-content-muted text-[10px] mt-0.5">Sorted by total journey time · wait included</p>
+        </div>
+        <span className="text-lg">🏆</span>
+      </div>
+
+      {options.map((opt, i) => {
+        const rideM = opt.legs.reduce((s, l) => s + l.durationMins, 0);
+        const isBest = i === 0;
+        return (
+          <div key={opt.boardingStop.name}
+            className={`px-4 py-4 border-b border-stroke last:border-0 ${isBest ? "bg-accent/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  {isBest && (
+                    <span className="text-[9px] bg-accent/20 text-accent px-2 py-0.5 rounded-full font-bold uppercase tracking-wide shrink-0">
+                      Best
+                    </span>
+                  )}
+                  <p className="text-content-primary font-semibold text-[13px] truncate">
+                    {opt.boardingStop.name}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <span className="text-content-muted text-[11px]">🚶 {opt.boardingStop.walkingMins} min walk</span>
+                  <span className="text-content-muted text-[11px]">⏳ ~{opt.estimatedWaitMins} min wait</span>
+                  <span className="text-content-muted text-[11px]">🚐 {rideM} min ride</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`font-bold text-sm ${isBest ? "text-accent" : "text-content-primary"}`}>
+                  ~{opt.totalMins} min
+                </p>
+                <p className="text-content-muted text-[11px] tabular-nums">{fareRange(opt.totalFare)}</p>
+              </div>
+            </div>
+            <button onClick={() => onSelect(opt)}
+              className={`mt-3 w-full py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
+                isBest
+                  ? "bg-accent text-white"
+                  : "border border-stroke text-content-secondary hover:border-accent/40"
+              }`}>
+              {isBest ? "Use this station →" : "See this route →"}
+            </button>
+          </div>
+        );
+      })}
+      <p className="px-4 py-2 text-content-disabled text-[9px]">Wait times estimated from time of day and route frequency</p>
     </div>
   );
 }
@@ -712,6 +786,15 @@ export default function HomePage() {
           );
         }
         setProcessing(false); return;
+      }
+
+      // Station Intelligence — show comparison when multiple boarding options exist
+      if (data.stationOptions && data.stationOptions.length > 1) {
+        setMsgs(p => [...p, { id: uid(), from: "bot", type: "typing", timestamp: new Date() } as Msg]);
+        await new Promise<void>(r => setTimeout(r, 600));
+        setMsgs(p => p.filter(x => x.type !== "typing"));
+        addMsg({ from: "bot", type: "stations", stationOptions: data.stationOptions });
+        await new Promise<void>(r => setTimeout(r, 350));
       }
 
       // Brief pause so route card doesn't snap in instantly after typing dots
@@ -1248,6 +1331,15 @@ export default function HomePage() {
                       </>
                     );
                   })()}
+                  {msg.type === "stations" && msg.stationOptions && (
+                    <StationsCard
+                      options={msg.stationOptions}
+                      onSelect={(opt) => {
+                        const dest = lastSearchRef.current?.destination;
+                        if (dest) search(dest, opt.boardingStop.name);
+                      }}
+                    />
+                  )}
                   {msg.type === "navstep" && msg.step && (
                     <div className="bg-accent rounded-2xl rounded-bl-sm px-4 py-3.5 flex items-center gap-3.5 min-w-[200px] shadow-accent-sm">
                       <span className="text-2xl font-bold text-white leading-none shrink-0">{msg.step.icon}</span>
