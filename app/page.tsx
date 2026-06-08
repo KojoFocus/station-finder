@@ -713,41 +713,37 @@ export default function HomePage() {
     ];
 
     const askManually = () => {
+      removeTyping();
       botSay(
-        { type: "text", text: "Akwaaba! Where are you going?" },
+        { type: "text", text: "Akwaaba 👋 Where to?" },
         { type: "chips", chips: EXAMPLE_CHIPS },
       );
     };
 
     const onGpsDenied = () => {
-      setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
+      removeTyping();
       botSay(
-        { type: "text", text: "Location is off. Turn it on in your settings, or just tell me where you are and I'll work from there." },
-        { type: "chips", chips: [
-          { label: "📍 Try again", action: "retry_gps" },
-          { label: "I'll type my location", action: "dismiss" },
-        ]},
+        { type: "text", text: "Location's off — no problem. Where are you coming from?" },
+        { type: "chips", chips: [{ label: "Try location again", action: "retry_gps" }] },
       );
     };
 
     if (!navigator.geolocation) { askManually(); return; }
 
-    addMsg({ from: "bot", type: "text", text: "📍 Getting your location…" });
+    // Show typing dots while GPS resolves — more natural than a status text
+    addMsg({ from: "bot", type: "typing" });
     navigator.geolocation.getCurrentPosition(
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
-        setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
+        removeTyping();
         botSay(
-          { type: "text", text: "📍 Got your location. Where are you heading?" },
+          { type: "text", text: "Where to?" },
           { type: "chips", chips: EXAMPLE_CHIPS },
         );
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }
-        else {
-          setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
-          askManually();
-        }
+        else { askManually(); }
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
@@ -773,8 +769,7 @@ export default function HomePage() {
       setSearchStatus(null);
       if (!ok) {
         await botSay(
-          { type: "text", text: `Hmm, I couldn't place **${destination}** on the map.` },
-          { type: "text", text: "Try a nearby landmark or area — like *Madina*, *Circle*, or *Tema*." },
+          { type: "text", text: `Can't place **${destination}** — try a nearby area or landmark.` },
         );
         setProcessing(false); return;
       }
@@ -783,12 +778,12 @@ export default function HomePage() {
         if (data.aiGuidance) {
           await botSay(
             { type: "text", text: data.aiGuidance },
-            { type: "text", text: "I don't have that route in my database yet — always confirm the fare at the terminal." },
+            { type: "text", text: "Not in my database yet — confirm the fare at the terminal." },
           );
         } else {
           await botSay(
             { type: "text", text: `I don't have a verified route to **${destination}** yet.` },
-            { type: "text", text: `Nearest stop to you is **${data.boardingStop.name}** — head there and ask around.` },
+            { type: "text", text: `Head to **${data.boardingStop.name}** — ask the station master when you get there.` },
           );
         }
         setProcessing(false); return;
@@ -998,7 +993,7 @@ export default function HomePage() {
 
     // Non-travel intent (greeting, question, etc.)
     if (gemini?.intent === "other" && !destination) {
-      await botSay({ type: "text", text: "What's your destination? Say something like *Madina* or *Takoradi* and I'll sort you out." });
+      await botSay({ type: "text", text: "Where are you going?" });
       return;
     }
 
@@ -1009,10 +1004,7 @@ export default function HomePage() {
     else if (knownOrigin) await search(destination, knownOrigin);
     else {
       setPendingDest(destination);
-      await botSay(
-        { type: "text", text: "Where are you right now?" },
-        { type: "text", text: "Just the area — like *Madina* or *Circle*." },
-      );
+      await botSay({ type: "text", text: "Where are you right now?" });
     }
   }, [addMsg, botSay, pendingDest, pendingClarification, processing, navigating, watchId, search, userLoc, knownOrigin, msgs, homePlace, workPlace]);
 
@@ -1144,7 +1136,7 @@ export default function HomePage() {
         },
         () => botSay({
           type: "text",
-          text: "Still off. Go to your phone settings and allow location for this browser, or just tell me where you are.",
+          text: "Still blocked. Just tell me your area and we'll work from there.",
         }),
         { timeout: 10000, enableHighAccuracy: true }
       );
@@ -1229,9 +1221,9 @@ export default function HomePage() {
       <button
         onClick={() => { setMapMini(false); setShowMiniBtn(false); }}
         aria-label="Expand map"
-        className="fixed z-40 w-14 h-14 rounded-2xl bg-surface-card border border-stroke shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-90"
+        className="fixed z-40 w-16 h-16 rounded-2xl bg-surface-card border border-accent/30 shadow-xl flex flex-col items-center justify-center gap-1 active:scale-90"
         style={{
-          top: '56px', left: '50%',
+          top: '72px', left: '50%',
           transform: showMiniBtn ? 'translateX(-50%) scale(1)' : 'translateX(-50%) scale(0)',
           opacity: showMiniBtn ? 1 : 0,
           transformOrigin: 'top center',
@@ -1241,11 +1233,11 @@ export default function HomePage() {
           pointerEvents: showMiniBtn ? 'auto' : 'none',
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
           <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
           <circle cx="12" cy="9" r="2.5" fill="currentColor" stroke="none"/>
         </svg>
-        <span className="text-[8px] text-content-secondary font-medium uppercase tracking-wide">Map</span>
+        <span className="text-[9px] text-accent font-semibold tracking-wide">Map</span>
       </button>
 
       {/* Chat sheet */}
