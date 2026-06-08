@@ -71,6 +71,10 @@ const LOCATIONS = [
   { id: "loc-bubuashie",     name: "Bubuashie",                   latitude:  5.5697, longitude: -0.2489, description: "Local urban link line stop northwest of Circle. Trotros to Kaneshie, Darkuman, and Circle load at the market junction." },
   { id: "loc-kanda",         name: "Kanda Highway",               latitude:  5.5978, longitude: -0.1926, description: "Central express route avenue stop on the ring road. Trotros to 37 and Circle load on the highway shoulder." },
 
+  // ── Accra Intercity Departure Terminals ─────────────────────────────────────
+  { id: "loc-neoplan",        name: "Neoplan Station",             latitude:  5.5600, longitude: -0.2101, description: "Adabraka intercity terminal near Kwame Nkrumah Circle. Main departure point for Volta Region (Ho, Hohoe, Kpando, Dambai) and eastern Ghana." },
+  { id: "loc-rawlings-park",  name: "John Mahama Park",            latitude:  5.5490, longitude: -0.2070, description: "Also known as Rawlings Park. Near Tudu — departure point for northern Ghana (Tamale) and eastern Volta routes. Ask at the lorry park for your bus." },
+
   // ── Intercity destinations ───────────────────────────────────────────────────
   { id: "loc-kumasi",        name: "Kumasi (Kejetia)",            latitude:  6.6885, longitude: -1.6244, description: "Massive regional transport terminal. Kejetia is the main intercity bus/trotro station in Kumasi." },
   { id: "loc-cape-coast",    name: "Cape Coast Lorry Park",       latitude:  5.1053, longitude: -1.2466, description: "Central regional tourist and transit yard. Hub for the Central Region — UNESCO Heritage sites nearby." },
@@ -83,6 +87,11 @@ const LOCATIONS = [
   { id: "loc-sunyani",       name: "Sunyani Lorry Park",          latitude:  7.3349, longitude: -2.3275, description: "Bono regional core station. About 6 hours from Accra via Kumasi. Book VIP or STC." },
   { id: "loc-bolgatanga",    name: "Bolgatanga Station",          latitude: 10.7869, longitude: -0.8514, description: "Upper East regional link gateway. Long overnight journey — book STC or VIP in advance." },
   { id: "loc-wa",            name: "Wa Central Lorry Park",       latitude: 10.0601, longitude: -2.5099, description: "Upper West regional link gateway. Very long journey (~12 hrs) — book overnight bus from STC terminal." },
+  { id: "loc-dambai",       name: "Dambai Station",              latitude:  8.0697, longitude:  0.1771, description: "Oti Regional capital. Long journey via Hohoe or Kpando. Book a seat in advance — most buses depart early morning." },
+  { id: "loc-hohoe",        name: "Hohoe Lorry Park",            latitude:  7.1500, longitude:  0.4750, description: "Key Volta Region junction town — gateway to Kpando, Dambai, and Oti Region. Frequent trotros from Accra via Neoplan or Madina." },
+  { id: "loc-aflao",        name: "Aflao Border Station",        latitude:  6.1140, longitude:  1.1930, description: "Ghana-Togo border town. Gateway to Lomé. Buses from Accra take the coastal Tema road — about 4–5 hours." },
+  { id: "loc-kpando",       name: "Kpando Station",              latitude:  6.9950, longitude:  0.2950, description: "Mid-Volta town on Lake Volta. Onward connections to Dambai and Kete-Krachi available here." },
+  { id: "loc-kete-krachi",  name: "Kete-Krachi Station",         latitude:  7.8100, longitude:  0.0340, description: "Oti Region town on the Volta Lake. Very long journey ~8 hrs from Accra — book ahead. Ferry connections available." },
 ];
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -316,6 +325,55 @@ const ROUTES = [
   // ── Circle → STC terminal (short trotro connection) ───────────────────────────
   { id: "route-circle-stc",         originId: "loc-accra-central", destinationId: "loc-stc-terminal",  transitType: "Trotro",        estimatedFare:  2.0, durationMins:   5, whatToLookFor: "The STC terminal is a short walk or 2-minute trotro from Circle. Head toward the motorway." },
   { id: "route-stc-circle",         originId: "loc-stc-terminal",  destinationId: "loc-accra-central", transitType: "Trotro",        estimatedFare:  2.0, durationMins:   5, whatToLookFor: "From STC terminal, take any trotro heading toward Circle. Very short ride." },
+
+  // ── Neoplan Station trotro connections ──────────────────────────────────────
+  { id: "route-circle-neoplan",     originId: "loc-accra-central", destinationId: "loc-neoplan",       transitType: "Trotro",        estimatedFare:  1.5, durationMins:   5, whatToLookFor: "From Circle (Kwame Nkrumah roundabout), walk north toward Adabraka or take any trotro — ask for 'Neoplan' (~5 min)." },
+  { id: "route-neoplan-circle",     originId: "loc-neoplan",       destinationId: "loc-accra-central", transitType: "Trotro",        estimatedFare:  1.5, durationMins:   5, whatToLookFor: "From Neoplan, board any southbound trotro — 'Circle! Kwame Nkrumah!'" },
+  { id: "route-neoplan-stc",        originId: "loc-neoplan",       destinationId: "loc-stc-terminal",  transitType: "Trotro",        estimatedFare:  2.0, durationMins:   8, whatToLookFor: "From Neoplan station, trotro or short walk to STC terminal." },
+  { id: "route-stc-neoplan",        originId: "loc-stc-terminal",  destinationId: "loc-neoplan",       transitType: "Trotro",        estimatedFare:  2.0, durationMins:   8, whatToLookFor: "From STC terminal, short trotro or walk to Neoplan at Adabraka." },
+
+  // ── John Mahama Park (Rawlings Park) trotro connections ──────────────────────
+  { id: "route-circle-jhm",         originId: "loc-accra-central", destinationId: "loc-rawlings-park", transitType: "Trotro",        estimatedFare:  1.5, durationMins:   5, whatToLookFor: "From Circle, trotro east toward Tudu — ask for 'Rawlings Park' or 'John Mahama Park'." },
+  { id: "route-jhm-circle",         originId: "loc-rawlings-park", destinationId: "loc-accra-central", transitType: "Trotro",        estimatedFare:  1.5, durationMins:   5, whatToLookFor: "From John Mahama Park, any trotro westbound to Circle — very short ride." },
+  { id: "route-tudu-jhm",           originId: "loc-tudu",          destinationId: "loc-rawlings-park", transitType: "Trotro",        estimatedFare:  1.0, durationMins:   3, whatToLookFor: "From Tudu terminal, short walk southeast to John Mahama Park lorry station." },
+  { id: "route-jhm-tudu",           originId: "loc-rawlings-park", destinationId: "loc-tudu",          transitType: "Trotro",        estimatedFare:  1.0, durationMins:   3, whatToLookFor: "From John Mahama Park, short walk northwest to Tudu terminal." },
+  { id: "route-neoplan-jhm",        originId: "loc-neoplan",       destinationId: "loc-rawlings-park", transitType: "Trotro",        estimatedFare:  1.0, durationMins:   5, whatToLookFor: "Neoplan and John Mahama Park are very close — short walk or trotro between them." },
+  { id: "route-jhm-neoplan",        originId: "loc-rawlings-park", destinationId: "loc-neoplan",       transitType: "Trotro",        estimatedFare:  1.0, durationMins:   5, whatToLookFor: "From John Mahama Park, short walk or trotro northwest to Neoplan Station." },
+
+  // ── Neoplan intercity routes (Volta Region & Eastern Ghana) ──────────────────
+  { id: "route-neoplan-ho",         originId: "loc-neoplan",       destinationId: "loc-ho",            transitType: "Intercity Bus", estimatedFare: 55.0, durationMins: 180, whatToLookFor: "At Neoplan Station (Adabraka), board buses calling 'Ho! Volta!' — frequent throughout the day. ~3 hrs." },
+  { id: "route-neoplan-hohoe",      originId: "loc-neoplan",       destinationId: "loc-hohoe",         transitType: "Intercity Bus", estimatedFare: 65.0, durationMins: 240, whatToLookFor: "At Neoplan Station, ask for 'Hohoe!' — departs when full. ~4 hrs. Get there early morning for more options." },
+  { id: "route-neoplan-dambai",     originId: "loc-neoplan",       destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 85.0, durationMins: 420, whatToLookFor: "At Neoplan Station, ask specifically for 'Dambai!' — goes via Hohoe or Kpando. ~7 hrs. Early morning departure." },
+  { id: "route-neoplan-aflao",      originId: "loc-neoplan",       destinationId: "loc-aflao",         transitType: "Intercity Bus", estimatedFare: 60.0, durationMins: 270, whatToLookFor: "At Neoplan Station, board buses calling 'Aflao! Lomé!' — via Tema coastal road. ~4.5 hrs." },
+  { id: "route-neoplan-kpando",     originId: "loc-neoplan",       destinationId: "loc-kpando",        transitType: "Intercity Bus", estimatedFare: 70.0, durationMins: 300, whatToLookFor: "At Neoplan Station, ask for 'Kpando!' — ~5 hrs via Hohoe. Departs when full." },
+
+  // ── Madina intercity routes (closer for east-side Accra travelers) ────────────
+  { id: "route-madina-ho",          originId: "loc-madina",        destinationId: "loc-ho",            transitType: "Intercity Bus", estimatedFare: 50.0, durationMins: 180, whatToLookFor: "At Madina Station east wing, board buses marked 'Ho! Volta Region!' — depart when full. ~3 hrs." },
+  { id: "route-madina-hohoe",       originId: "loc-madina",        destinationId: "loc-hohoe",         transitType: "Intercity Bus", estimatedFare: 60.0, durationMins: 210, whatToLookFor: "At Madina Station, look for 'Hohoe! Kpando!' buses on the east side — some take the Adenta road shortcut. ~3.5 hrs." },
+  { id: "route-madina-dambai",      originId: "loc-madina",        destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 80.0, durationMins: 400, whatToLookFor: "At Madina Station, ask specifically for 'Dambai!' — goes via Hohoe. Long journey ~6.5 hrs. Book a seat early in the morning." },
+  { id: "route-madina-aflao",       originId: "loc-madina",        destinationId: "loc-aflao",         transitType: "Intercity Bus", estimatedFare: 60.0, durationMins: 270, whatToLookFor: "From Madina station east exit, board 'Aflao! Togo border!' — via Adenta-Tema road. ~4.5 hrs." },
+
+  // ── John Mahama Park intercity routes ────────────────────────────────────────
+  { id: "route-jhm-tamale",         originId: "loc-rawlings-park", destinationId: "loc-tamale",        transitType: "Intercity Bus", estimatedFare:140.0, durationMins: 480, whatToLookFor: "At John Mahama Park (Rawlings Park), board buses calling 'Tamale! North!' — multiple operators. ~8 hrs. Pack food and water." },
+  { id: "route-jhm-kumasi",         originId: "loc-rawlings-park", destinationId: "loc-kumasi",        transitType: "Intercity Bus", estimatedFare: 75.0, durationMins: 240, whatToLookFor: "At John Mahama Park, board 'Kumasi! Kejetia!' buses — frequent departures. ~4 hrs." },
+  { id: "route-jhm-dambai",         originId: "loc-rawlings-park", destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 85.0, durationMins: 420, whatToLookFor: "At John Mahama Park, ask for 'Dambai!' via eastern road — confirm with station master. ~7 hrs." },
+  { id: "route-jhm-aflao",          originId: "loc-rawlings-park", destinationId: "loc-aflao",         transitType: "Intercity Bus", estimatedFare: 60.0, durationMins: 270, whatToLookFor: "At John Mahama Park, board 'Aflao! Keta road!' buses — departs when full. ~4.5 hrs." },
+  { id: "route-jhm-ho",             originId: "loc-rawlings-park", destinationId: "loc-ho",            transitType: "Intercity Bus", estimatedFare: 55.0, durationMins: 180, whatToLookFor: "At John Mahama Park, board 'Ho! Volta!' — departs throughout the day. ~3 hrs." },
+
+  // ── STC additional intercity ──────────────────────────────────────────────────
+  { id: "route-stc-aflao",          originId: "loc-stc-terminal",  destinationId: "loc-aflao",         transitType: "Intercity Bus", estimatedFare: 65.0, durationMins: 270, whatToLookFor: "From Accra STC Terminal, book the Aflao/Lomé bus at the counter. ~4.5 hours. Buy ticket in advance." },
+  { id: "route-stc-dambai",         originId: "loc-stc-terminal",  destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 90.0, durationMins: 420, whatToLookFor: "From STC Terminal, book bus to Dambai via Hohoe. ~7 hrs. Very limited service — confirm schedule at counter." },
+  { id: "route-stc-kete-krachi",    originId: "loc-stc-terminal",  destinationId: "loc-kete-krachi",   transitType: "Intercity Bus", estimatedFare: 95.0, durationMins: 480, whatToLookFor: "From STC Terminal, book bus to Kete-Krachi via Hohoe. ~8 hrs. Very limited service — book ahead." },
+
+  // ── Kaneshie intercity (western Ghana) ───────────────────────────────────────
+  { id: "route-kaneshie-cape-coast-ic", originId: "loc-kaneshie",  destinationId: "loc-cape-coast",    transitType: "Intercity Bus", estimatedFare: 45.0, durationMins: 180, whatToLookFor: "At Kaneshie lorry park intercity bay, board 'Cape Coast! Central Region!' — ~3 hrs. Frequent departures." },
+  { id: "route-kaneshie-takoradi-ic",   originId: "loc-kaneshie",  destinationId: "loc-takoradi",      transitType: "Intercity Bus", estimatedFare: 65.0, durationMins: 240, whatToLookFor: "At Kaneshie, board 'Takoradi! Western Region!' buses from the far side of the lorry park — ~4 hrs." },
+  { id: "route-kaneshie-winneba-ic",    originId: "loc-kaneshie",  destinationId: "loc-winneba",       transitType: "Intercity Bus", estimatedFare: 30.0, durationMins:  90, whatToLookFor: "At Kaneshie, board 'Winneba!' from the coastal road side — ~1.5 hrs." },
+
+  // ── Hohoe onward connections ──────────────────────────────────────────────────
+  { id: "route-hohoe-dambai",       originId: "loc-hohoe",         destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 30.0, durationMins: 150, whatToLookFor: "From Hohoe lorry park, board 'Dambai!' trotros northward — ~2.5 hrs." },
+  { id: "route-hohoe-kpando",       originId: "loc-hohoe",         destinationId: "loc-kpando",        transitType: "Intercity Bus", estimatedFare: 20.0, durationMins:  90, whatToLookFor: "From Hohoe lorry park, 'Kpando!' — ~1.5 hrs." },
+  { id: "route-kpando-dambai",      originId: "loc-kpando",        destinationId: "loc-dambai",        transitType: "Intercity Bus", estimatedFare: 20.0, durationMins: 120, whatToLookFor: "From Kpando station, board 'Dambai!' — ~2 hrs north." },
 ];
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -333,12 +391,16 @@ async function main() {
   }
   console.log(`✅ ${LOCATIONS.length} locations done`);
 
-  // Routes sequentially (connection_limit=1)
+  // Routes in batches of 5 — keeps Neon from closing the connection on long sequential runs
   let done = 0;
-  for (const route of ROUTES) {
-    await prisma.route.upsert({ where: { id: route.id }, update: {}, create: route });
-    done++;
-    if (done % 20 === 0) console.log(`   ${done}/${ROUTES.length} routes…`);
+  for (let i = 0; i < ROUTES.length; i += 5) {
+    await Promise.all(
+      ROUTES.slice(i, i + 5).map((route) =>
+        prisma.route.upsert({ where: { id: route.id }, update: {}, create: route })
+      )
+    );
+    done = Math.min(i + 5, ROUTES.length);
+    if (done % 20 === 0 || done === ROUTES.length) console.log(`   ${done}/${ROUTES.length} routes…`);
   }
   console.log(`✅ ${ROUTES.length} routes done`);
   console.log("🎉 Ghana's trotro + intercity network is mapped.");

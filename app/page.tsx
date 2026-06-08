@@ -18,6 +18,7 @@ interface AlternateRoute { legs: TrotroLeg[]; totalMins: number; totalFare: numb
 interface StationOption {
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
   legs: TrotroLeg[];
+  trotroToTerminal: { legs: TrotroLeg[]; totalMins: number; totalFare: number } | null;
   estimatedWaitMins: number;
   totalMins: number;
   totalFare: number;
@@ -274,13 +275,23 @@ function StationsCard({ options, onSelect }: {
   const [idx, setIdx] = useState(0);
   const opt = options[idx];
   const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
+  const busLeg = opt.legs[0];
+  const busHrs = busLeg ? Math.round(busLeg.durationMins / 60 * 10) / 10 : 0;
+  const hasT = isIntercity && opt.trotroToTerminal && opt.trotroToTerminal.legs.length > 0;
 
   return (
     <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
-      {/* Dot indicator */}
+      {/* Dot indicator + recommended badge */}
       {options.length > 1 && (
         <div className="flex items-center justify-between px-4 pt-3 pb-0">
-          <p className="text-content-disabled text-[10px]">{idx + 1} of {options.length}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-content-disabled text-[10px]">{idx + 1} of {options.length}</p>
+            {idx === 0 && (
+              <span className="text-[9px] font-semibold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Recommended
+              </span>
+            )}
+          </div>
           <div className="flex gap-1.5">
             {options.map((_, i) => (
               <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === idx ? "bg-accent" : "bg-stroke"}`} />
@@ -293,35 +304,62 @@ function StationsCard({ options, onSelect }: {
         {/* Station name */}
         <p className="text-content-primary font-bold text-base leading-snug">{opt.boardingStop.name}</p>
 
-        {/* Fare + time */}
+        {/* Fare + time stats */}
         <div className="flex items-center gap-4 mt-3">
           <div>
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Fare</p>
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Total fare</p>
             <p className="text-content-primary font-bold text-lg tabular-nums">{fareRange(opt.totalFare)}</p>
           </div>
           <div className="w-px h-8 bg-stroke" />
           <div>
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Journey</p>
-            <p className="text-content-primary font-bold text-lg">~{isIntercity ? opt.legs.reduce((s,l)=>s+l.durationMins,0) : opt.totalMins} min</p>
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest">{isIntercity ? "Bus time" : "Journey"}</p>
+            <p className="text-content-primary font-bold text-lg">
+              {isIntercity ? `~${busHrs} hr${busHrs !== 1 ? "s" : ""}` : `~${opt.totalMins} min`}
+            </p>
           </div>
-          {isIntercity ? (
-            <>
-              <div className="w-px h-8 bg-stroke" />
-              <div>
-                <p className="text-content-disabled text-[9px] uppercase tracking-widest">From you</p>
-                <p className="text-content-primary font-bold text-lg">{formatDist(opt.boardingStop.distanceM)}</p>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-px h-8 bg-stroke" />
-              <div>
-                <p className="text-content-disabled text-[9px] uppercase tracking-widest">Walk</p>
-                <p className="text-content-primary font-bold text-lg">{opt.boardingStop.walkingMins} min</p>
-              </div>
-            </>
-          )}
+          <div className="w-px h-8 bg-stroke" />
+          <div>
+            <p className="text-content-disabled text-[9px] uppercase tracking-widest">{isIntercity ? "Terminal" : "Walk"}</p>
+            <p className="text-content-primary font-bold text-lg">
+              {isIntercity ? formatDist(opt.boardingStop.distanceM) : `${opt.boardingStop.walkingMins} min`}
+            </p>
+          </div>
         </div>
+
+        {/* Intercity two-part journey breakdown */}
+        {isIntercity && (
+          <div className="mt-3 space-y-2">
+            {hasT ? (
+              <div className="bg-surface-elevated rounded-xl px-3 py-2.5">
+                <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">🚐 Trotro to terminal</p>
+                {opt.trotroToTerminal!.legs.map((leg, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="w-1 h-1 rounded-full bg-accent mt-1.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-content-secondary text-[11px] leading-snug">
+                        <span className="font-medium">{leg.from} → {leg.to}</span>
+                        <span className="text-content-muted"> · ~{leg.durationMins} min · {fareRange(leg.fare)}</span>
+                      </p>
+                      <p className="text-content-muted text-[10px] leading-snug mt-0.5">{leg.whatToLookFor}</p>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-content-muted text-[10px] mt-1.5">
+                  ~{opt.trotroToTerminal!.totalMins} min · {fareRange(opt.trotroToTerminal!.totalFare)}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-surface-elevated rounded-xl px-3 py-2">
+                <p className="text-content-muted text-[11px]">📍 {formatDist(opt.boardingStop.distanceM)} from your location</p>
+              </div>
+            )}
+            <div className="bg-surface-elevated rounded-xl px-3 py-2.5">
+              <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1">🚌 Intercity bus</p>
+              <p className="text-content-secondary text-[11px] leading-snug">{busLeg?.whatToLookFor}</p>
+              <p className="text-content-muted text-[10px] mt-1">{fareRange(busLeg?.fare ?? 0)} · ~{busHrs} hr{busHrs !== 1 ? "s" : ""}</p>
+            </div>
+          </div>
+        )}
 
         {/* Traffic note */}
         {opt.trafficNote && (
@@ -729,14 +767,35 @@ export default function HomePage() {
         setProcessing(false); return;
       }
 
-      // ── Intercity: show terminal options only — no local route card ──────────
+      // ── Intercity: Station Intelligence — recommend best terminal with reasoning ─
       if (data.isIntercity) {
         const opts = data.stationOptions ?? [];
         if (opts.length > 0) {
-          // Brief summary text before the card
-          const summary = opts.length === 1
-            ? `There's one terminal serving that route — **${opts[0].boardingStop.name}**.`
-            : `I found ${opts.length} terminals with buses to **${destination}**. Here's a comparison — tap Next to browse.`;
+          const best = opts[0]; // sorted by totalFare → totalMins
+          const busHrs = Math.round((best.legs[0]?.durationMins ?? 0) / 60 * 10) / 10;
+
+          let summary: string;
+          if (opts.length === 1) {
+            summary = `One terminal serves **${destination}** from Accra — **${best.boardingStop.name}**.${best.trotroToTerminal ? " I've mapped the trotro to get you there." : ""}`;
+          } else {
+            // Find nearest terminal to surface "closer isn't always better" insight
+            const nearest = [...opts].sort((a, b) => a.boardingStop.distanceM - b.boardingStop.distanceM)[0];
+            const nearestIsBest = nearest.boardingStop.name === best.boardingStop.name;
+
+            if (!nearestIsBest) {
+              const fareDiff = nearest.totalFare - best.totalFare;
+              const timeDiff = nearest.totalMins - best.totalMins;
+              const saving = fareDiff > 5
+                ? `costs ~₵${Math.round(fareDiff)} more`
+                : timeDiff > 10
+                  ? `adds ~${Math.round(timeDiff)} min to your total journey`
+                  : "isn't the best fit for this route";
+              summary = `Found **${opts.length} terminals** for **${destination}**. **${best.boardingStop.name}** is the recommended option — **${nearest.boardingStop.name}** is closer but ${saving}. Browse all options below.`;
+            } else {
+              summary = `Found **${opts.length} terminals** for **${destination}**. **${best.boardingStop.name}** is your best bet — ${fareRange(best.totalFare)} total, ~${busHrs} hr${busHrs !== 1 ? "s" : ""} bus ride. Compare all below.`;
+            }
+          }
+
           await botSay({ type: "text", text: summary });
           addMsg({ from: "bot", type: "stations", stationOptions: opts });
         } else if (data.aiGuidance) {
@@ -1002,7 +1061,16 @@ export default function HomePage() {
     vibrate();
     if (action.startsWith("dest:"))      { send(action.slice(5)); return; }
     if (action === "retry_last")         { const l = lastSearchRef.current; if (l) search(l.destination, l.fromAddress, l.coords); return; }
-    if (action === "dismiss")            { return; }
+    if (action === "dismiss") {
+      const dest = lastSearchRef.current?.destination;
+      botSay({
+        type: "text",
+        text: dest
+          ? `No problem — when you get to the terminal, ask the station master for the next bus to **${dest}**. They'll point you to the right bay.`
+          : "No problem — check with the station master when you arrive and they'll direct you.",
+      });
+      return;
+    }
     if (action.startsWith("trotro_to:")) {
       const terminal = action.slice(10);
       if (userLoc)      search(terminal, undefined, userLoc);
@@ -1303,15 +1371,23 @@ export default function HomePage() {
                         const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
                         if (isIntercity) {
                           const dest = lastSearchRef.current?.destination ?? "your destination";
-                          const hrs  = Math.round(opt.legs[0].durationMins / 60 * 10) / 10;
-                          botSay(
-                            { type: "text", text: `**${opt.boardingStop.name}** — ${fareRange(opt.totalFare)} · ~${hrs} hr${hrs !== 1 ? "s" : ""} to ${dest}.` },
-                            { type: "text", text: `Want me to find a trotro to get you to **${opt.boardingStop.name}**?` },
-                            { type: "chips", chips: [
-                              { label: "Yes, find me a trotro →", action: `trotro_to:${opt.boardingStop.name}` },
-                              { label: "I'll find my own way", action: "dismiss" },
-                            ]},
-                          );
+                          const busLeg = opt.legs[0];
+                          const hrs = Math.round(busLeg.durationMins / 60 * 10) / 10;
+                          const t = opt.trotroToTerminal;
+
+                          if (t && t.legs.length > 0) {
+                            const firstLeg = t.legs[0];
+                            botSay(
+                              { type: "text", text: `**${opt.boardingStop.name}** is your best bet for **${dest}**.` },
+                              { type: "text", text: `🚐 *Get to the terminal:* ${firstLeg.whatToLookFor}${t.legs.length > 1 ? ` then change at ${t.legs.at(-1)?.from}` : ""}. (~${t.totalMins} min, ${fareRange(t.totalFare)})` },
+                              { type: "text", text: `🚌 *At ${opt.boardingStop.name}:* ${busLeg.whatToLookFor} (~${hrs} hr${hrs !== 1 ? "s" : ""}, ${fareRange(busLeg.fare)})` },
+                            );
+                          } else {
+                            botSay(
+                              { type: "text", text: `**${opt.boardingStop.name}** for **${dest}** — ${fareRange(busLeg.fare)} · ~${hrs} hr${hrs !== 1 ? "s" : ""}.` },
+                              { type: "text", text: busLeg.whatToLookFor },
+                            );
+                          }
                         } else {
                           const dest = lastSearchRef.current?.destination;
                           if (dest) search(dest, opt.boardingStop.name);

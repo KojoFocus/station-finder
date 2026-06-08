@@ -35,6 +35,7 @@ export interface AlternateRoute {
 export interface StationOption {
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
   legs: TrotroLeg[];
+  trotroToTerminal: { legs: TrotroLeg[]; totalMins: number; totalFare: number } | null;
   estimatedWaitMins: number;
   totalMins: number;
   totalFare: number;
@@ -188,6 +189,19 @@ const ALIASES: Record<string, string> = {
   "winneba":           "Winneba",
   // Nsawam
   "nsawam":            "Nsawam",
+  // Neoplan — "adabraka" is the neighbourhood name people use
+  "adabraka":          "Neoplan",
+  // John Mahama Park — "Rawlings Park" is its common popular name
+  "rawlings":          "John Mahama",
+  "rawlings park":     "John Mahama",
+  "jhm":               "John Mahama",
+  // Aflao — travellers often say "Lomé" or "Togo" meaning the border crossing at Aflao
+  "lome":              "Aflao",
+  "lomé":              "Aflao",
+  "togo":              "Aflao",
+  // Kete-Krachi — hyphen vs space spelling variant + short form
+  "kete krachi":       "Kete-Krachi",
+  "kete":              "Kete-Krachi",
   // Aburi
   "aburi":             "Aburi",
   "aburi gardens":     "Aburi",
@@ -521,15 +535,39 @@ export async function POST(req: NextRequest) {
     const stationOptions: StationOption[] = [];
 
     if (isIntercity) {
-      // Terminal options — intercity fare and time ONLY, no local hops added.
-      // Filter to terminals within 80 km of the user so we only show Accra-area
-      // departure points (excludes e.g. Tamale→Bolgatanga routes).
+      // Terminal options — for each terminal, compute the trotro journey from
+      // the user's nearest stop to the terminal, then add the intercity bus leg.
+      // Filter to terminals within 80 km of the user (excludes transit hops like Tamale→Bolgatanga).
+      const trotroOnlyRoutes = allRoutes.filter(r => r.transitType === "Trotro");
+
       for (const busRoute of directIntercityRoutes) {
         const terminal = locMap.get(busRoute.originId);
         if (!terminal) continue;
         const wd = Math.round(distM(userCoords, { lat: terminal.latitude, lng: terminal.longitude }));
-        if (wd > 80000) continue; // terminal is not near the user — skip
+        if (wd > 80000) continue;
         const wm = Math.max(1, Math.round(wd / 80));
+
+        // Trotro path from user's nearest stop to this terminal
+        let trotroToTerminal: StationOption["trotroToTerminal"] = null;
+        if (boardingStop.id !== terminal.id) {
+          const tPath = dijkstra(trotroOnlyRoutes, boardingStop.id, terminal.id);
+          if (tPath && tPath.length > 0) {
+            const tLegs: TrotroLeg[] = tPath.map(r => {
+              const o = locMap.get(r.originId)!;
+              const d = locMap.get(r.destinationId)!;
+              return { from: o.name, to: d.name, whatToLookFor: r.whatToLookFor, fare: r.estimatedFare, durationMins: r.durationMins, transitType: r.transitType };
+            });
+            trotroToTerminal = {
+              legs: tLegs,
+              totalMins: tLegs.reduce((s, l) => s + l.durationMins, 0),
+              totalFare: tLegs.reduce((s, l) => s + l.fare, 0),
+            };
+          }
+        }
+
+        const trotroMins = trotroToTerminal?.totalMins ?? 0;
+        const trotroFare = trotroToTerminal?.totalFare ?? 0;
+
         stationOptions.push({
           boardingStop: { name: terminal.name, lat: terminal.latitude, lng: terminal.longitude, description: terminal.description, distanceM: wd, walkingMins: wm },
           legs: [{
@@ -539,14 +577,15 @@ export async function POST(req: NextRequest) {
             durationMins: busRoute.durationMins,
             transitType: busRoute.transitType,
           }],
+          trotroToTerminal,
           estimatedWaitMins: 25,
-          totalMins: busRoute.durationMins,   // bus journey only — local travel is separate
-          totalFare: busRoute.estimatedFare,  // bus fare only
+          totalMins: trotroMins + walkMins + 25 + busRoute.durationMins,
+          totalFare: trotroFare + busRoute.estimatedFare,
           trafficNote: traffic,
         });
       }
-      // Sort by fare (cheapest first), then by terminal distance
-      stationOptions.sort((a, b) => a.totalFare - b.totalFare || a.boardingStop.distanceM - b.boardingStop.distanceM);
+      // Sort by total fare (includes trotro), then total time
+      stationOptions.sort((a, b) => a.totalFare - b.totalFare || a.totalMins - b.totalMins);
     } else {
       // Local trotro — top 3 nearest stops with routes
       const candidates = [...locations]
@@ -569,6 +608,7 @@ export async function POST(req: NextRequest) {
         stationOptions.push({
           boardingStop: { name: cand.name, lat: cand.latitude, lng: cand.longitude, description: cand.description, distanceM: wd, walkingMins: wm },
           legs: optLegs,
+          trotroToTerminal: null,
           estimatedWaitMins: wait,
           totalMins: wm + wait + ride,
           totalFare: optLegs.reduce((s, l) => s + l.fare, 0),
