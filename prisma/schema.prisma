@@ -87,6 +87,15 @@ model Report {
   createdAt    DateTime @default(now())
 }
 
+// Thumbs up/down feedback on route cards
+model FeedbackLog {
+  id           String   @id @default(uuid())
+  destination  String
+  boardingStop String
+  helpful      Boolean
+  createdAt    DateTime @default(now())
+}
+
 // Phase 3 model — defined now so the schema is complete, not used in Phase 1
 model PartnerDriver {
   id             String   @id @default(uuid())

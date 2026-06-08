@@ -26,9 +26,16 @@ export interface TrotroLeg {
   transitType: string;
 }
 
+export interface AlternateRoute {
+  legs: TrotroLeg[];
+  totalMins: number;
+  totalFare: number;
+}
+
 export interface DirectionsResponse {
   routeFound: boolean;
   aiGuidance: string | null;
+  alternateTrotro: AlternateRoute | null;
   destCoords: LatLng;
   boardingStop: {
     name: string; lat: number; lng: number;
@@ -446,15 +453,23 @@ export async function POST(req: NextRequest) {
 
     const totalMins = legs.reduce((s, l) => s + l.durationMins, 0);
 
-    // Alternate note if BFS found a different (fewer-hop) path
-    let alternateNote: string | null = null;
+    // Build alternate route (BFS fewest-hops) as proper legs when it meaningfully differs
+    let alternateTrotro: AlternateRoute | null = null;
     if (hopPath && fastPath && hopPath.length < fastPath.length) {
-      const hopMins  = hopPath.reduce((s, r) => s + r.durationMins, 0);
-      const lastHop  = locMap.get(hopPath[hopPath.length - 1]?.destinationId ?? "");
-      if (lastHop && hopMins < totalMins - 5) {
-        alternateNote = `Fewer transfers: ${hopPath.length} stop${hopPath.length !== 1 ? "s" : ""} via ${locMap.get(hopPath[0]?.destinationId ?? "")?.name?.split(" ")[0] ?? ""} (~${hopMins} min)`;
+      const altLegs: TrotroLeg[] = hopPath.map((r) => {
+        const o = locMap.get(r.originId)!;
+        const d = locMap.get(r.destinationId)!;
+        return { from: o.name, to: d.name, whatToLookFor: r.whatToLookFor, fare: r.estimatedFare, durationMins: r.durationMins, transitType: r.transitType };
+      });
+      const altMins = altLegs.reduce((s, l) => s + l.durationMins, 0);
+      const altFare = altLegs.reduce((s, l) => s + l.fare, 0);
+      if (Math.abs(altMins - totalMins) >= 5) {
+        alternateTrotro = { legs: altLegs, totalMins: altMins, totalFare: altFare };
       }
     }
+    const alternateNote = alternateTrotro
+      ? `Fewer transfers: ${alternateTrotro.legs.length} hop${alternateTrotro.legs.length !== 1 ? "s" : ""} (~${alternateTrotro.totalMins} min)`
+      : null;
 
     // ── Final walk from alighting stop to true destination ────────────────────
     let finalWalk: { distanceM: number; walkingMins: number } | null = null;
@@ -486,6 +501,7 @@ Write like a helpful local, not a robot. No bullet points, no markdown, no heade
     return NextResponse.json({
       routeFound: legs.length > 0,
       aiGuidance,
+      alternateTrotro,
       destCoords,
       boardingStop: { name: boardingStop.name, lat: boardingStop.latitude, lng: boardingStop.longitude, description: boardingStop.description, distanceM: walkDistM, walkingMins: walkMins },
       alightingStop: alightingStop ? { name: alightingStop.name, lat: alightingStop.latitude, lng: alightingStop.longitude } : null,

@@ -14,9 +14,11 @@ interface TrotroLeg {
   whatToLookFor: string;
   fare: number; durationMins: number; transitType: string;
 }
+interface AlternateRoute { legs: TrotroLeg[]; totalMins: number; totalFare: number; }
 interface DirectionsResult {
   routeFound: boolean;
   aiGuidance: string | null;
+  alternateTrotro: AlternateRoute | null;
   destCoords:   { lat: number; lng: number };
   boardingStop: { name: string; lat: number; lng: number; description: string; distanceM: number; walkingMins: number };
   alightingStop: { name: string; lat: number; lng: number } | null;
@@ -100,15 +102,6 @@ async function fetchDirections(body: Record<string, unknown>) {
 
 function vibrate() { try { navigator.vibrate?.(8); } catch { /* not supported */ } }
 
-function frequencyHint(durationMins: number, transitType: string): string {
-  if (transitType === "Intercity Bus") return "book in advance";
-  const h = new Date().getHours();
-  if (h >= 21 || h < 5) return "infrequent at this hour";
-  if (durationMins <= 15) return "every 5–10 min";
-  if (durationMins <= 35) return "every 10–20 min";
-  if (durationMins <= 60) return "every 20–40 min";
-  return "less frequent";
-}
 
 // ─── Markdown renderer ────────────────────────────────────────────────────────
 // Parses **bold** and *italic* into React elements; leaves everything else as-is.
@@ -186,87 +179,153 @@ function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
 function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | null }) {
-  const legs      = result.trotro?.legs ?? [];
-  const totalMins = result.boardingStop.walkingMins + (result.trotro?.totalMins ?? 0) + (result.finalWalk?.walkingMins ?? 0);
+  const [tab,      setTab]      = useState<"primary" | "alt">("primary");
+  const [expanded, setExpanded] = useState(true);
+
+  const hasAlt  = !!result.alternateTrotro;
+  const primary = result.trotro?.legs ?? [];
+  const altLegs = result.alternateTrotro?.legs ?? [];
+  const legs    = tab === "alt" && hasAlt ? altLegs : primary;
+
+  const trotroMins = legs.reduce((s, l) => s + l.durationMins, 0);
+  const totalMins  = result.boardingStop.walkingMins + trotroMins + (result.finalWalk?.walkingMins ?? 0);
+  const totalFare  = tab === "alt" && result.alternateTrotro ? result.alternateTrotro.totalFare : (fare ?? 0);
+  const transitType = legs[0]?.transitType ?? "Trotro";
+  const isIntercity = transitType === "Intercity Bus";
+  const destName   = legs.at(-1)?.to ?? "Destination";
+
+  const rushHour = (() => { const h = new Date().getHours(); return (h >= 6 && h < 9) || (h >= 16 && h < 20); })();
 
   return (
-    <div className="rounded-2xl rounded-bl-sm overflow-hidden min-w-[240px] shadow-card border border-stroke"
-         style={{ borderLeftColor: "var(--accent-interactive)", borderLeftWidth: 3 }}>
+    <div className="rounded-2xl overflow-hidden border border-stroke bg-surface-card w-full">
 
-      {/* Summary header */}
-      <div className="bg-accent/15 px-4 py-2.5 flex items-center gap-2 border-b border-stroke">
-        <span className="text-accent text-[10px] font-bold uppercase tracking-widest">Route Found</span>
-        <div className="flex-1" />
-        {fare !== null && <span className="text-accent font-black text-base tabular-nums">{fareRange(fare)}</span>}
-        <span className="text-content-muted text-[10px]">~{totalMins} min</span>
+      {/* Direct / Multi-Hop toggle — only when alternate exists */}
+      {hasAlt && (
+        <div className="flex gap-2 px-3 pt-3 pb-0">
+          {(["primary", "alt"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
+                tab === t ? "bg-accent text-white" : "text-content-secondary border border-stroke"
+              }`}>
+              {t === "primary" ? `Fastest · ~${result.trotro!.totalMins} min` : `Fewer hops · ~${result.alternateTrotro!.totalMins} min`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Transit badge + stop count */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <span className="flex items-center gap-1.5 bg-accent/15 text-accent text-[11px] font-bold px-3 py-1.5 rounded-full">
+          🚐 {isIntercity ? "INTERCITY BUS" : "TROTRO"}
+        </span>
+        {legs.length > 1 && (
+          <span className="text-content-muted text-[11px] border border-stroke rounded-full px-3 py-1.5">
+            {legs.length} stops
+          </span>
+        )}
       </div>
 
-      {/* Steps */}
-      <div className="bg-surface-card px-4 py-3.5 space-y-3">
-
-        {/* Walk to boarding stop */}
-        <div className="flex gap-2.5 items-start">
-          <span className="text-base mt-0.5 shrink-0">🚶</span>
-          <div>
-            <p className="text-content-primary text-xs font-semibold">Walk to {result.boardingStop.name}</p>
-            <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{result.boardingStop.description}</p>
-            <p className="text-content-muted text-[11px] mt-1">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
-          </div>
+      {/* FROM → TO */}
+      <div className="flex items-center gap-3 px-4 pb-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-content-muted text-[9px] uppercase tracking-widest">FROM</p>
+          <p className="text-content-primary font-bold text-[15px] leading-snug truncate">{result.boardingStop.name}</p>
         </div>
+        <div className="flex items-center shrink-0">
+          <div className="w-6 h-px bg-stroke" />
+          <span className="text-accent mx-1.5 text-sm">→</span>
+          <div className="w-6 h-px bg-stroke" />
+        </div>
+        <div className="flex-1 min-w-0 text-right">
+          <p className="text-content-muted text-[9px] uppercase tracking-widest">TO</p>
+          <p className="text-content-primary font-bold text-[15px] leading-snug truncate">{destName}</p>
+        </div>
+      </div>
 
-        {/* Trotro legs */}
-        {legs.map((leg, i) => (
-          <div key={i}>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-px bg-stroke" />
-              <span className="text-content-disabled text-[10px]">{i === 0 ? "THEN" : "TRANSFER"}</span>
-              <div className="flex-1 h-px bg-stroke" />
-            </div>
-            <div className="flex gap-2.5 items-start mt-3">
-              <span className="text-base mt-0.5 shrink-0">🚐</span>
-              <div>
-                <p className="text-content-primary text-xs font-semibold">{leg.from} → {leg.to}</p>
-                <p className="text-content-secondary text-xs mt-0.5 leading-relaxed">{leg.whatToLookFor}</p>
-                <p className="text-content-muted text-[11px] mt-1">{fareRange(leg.fare)} · ~{leg.durationMins} min · {frequencyHint(leg.durationMins, leg.transitType)}</p>
-              </div>
-            </div>
+      {/* Stats grid: FARE · DURATION · SEATS */}
+      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+        {[
+          { label: "FARE",     value: totalFare > 0 ? fareRange(totalFare) : "—"  },
+          { label: "DURATION", value: `~${totalMins} min`                       },
+          { label: "SEATS",    value: isIntercity ? "Book ahead" : "Shared"     },
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-raised rounded-xl px-3 py-2.5">
+            <p className="text-content-muted text-[9px] uppercase tracking-widest">{label}</p>
+            <p className="text-content-primary font-bold text-sm mt-1 leading-tight">{value}</p>
           </div>
         ))}
+      </div>
 
-        {/* Final walk to destination (when geocoded destination differs from alighting stop) */}
-        {result.finalWalk && (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-px bg-stroke" />
-              <span className="text-content-disabled text-[10px]">ALIGHT + WALK</span>
-              <div className="flex-1 h-px bg-stroke" />
-            </div>
-            <div className="flex gap-2.5 items-start">
-              <span className="text-base mt-0.5 shrink-0">🚶</span>
-              <div>
-                <p className="text-content-primary text-xs font-semibold">Walk to your destination</p>
-                <p className="text-content-muted text-[11px] mt-1">{formatDist(result.finalWalk.distanceM)} · ~{result.finalWalk.walkingMins} min</p>
+      {/* HOW TO BOARD */}
+      <div className="px-4 pb-4 border-t border-stroke pt-4">
+        <p className="text-content-muted text-[9px] uppercase tracking-widest mb-3">HOW TO BOARD</p>
+        <div className="space-y-3">
+          {legs[0]?.whatToLookFor && (
+            <div className="flex gap-3 items-start">
+              <div className="w-8 h-8 rounded-full bg-[#f0c040]/15 flex items-center justify-center shrink-0">
+                <span className="text-sm">🔊</span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-content-muted text-[10px]">Listen for</p>
+                <p className="text-content-primary text-[13px] font-medium leading-snug">"{legs[0].whatToLookFor}"</p>
               </div>
             </div>
-          </>
+          )}
+          <div className="flex gap-3 items-start">
+            <div className="w-8 h-8 rounded-full bg-accent/15 flex items-center justify-center shrink-0">
+              <span className="text-sm">📍</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-content-muted text-[10px]">Where to stand</p>
+              <p className="text-content-primary text-[13px] leading-snug">{result.boardingStop.description}</p>
+            </div>
+          </div>
+          <div className="flex gap-3 items-start">
+            <div className="w-8 h-8 rounded-full bg-raised flex items-center justify-center shrink-0">
+              <span className="text-sm">🚶</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-content-muted text-[10px]">Walk from you</p>
+              <p className="text-content-primary text-[13px]">{formatDist(result.boardingStop.distanceM)} · ~{result.boardingStop.walkingMins} min</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* JOURNEY BREAKDOWN */}
+      <div className="border-t border-stroke">
+        <button onClick={() => setExpanded(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 active:opacity-60">
+          <p className="text-[9px] uppercase tracking-widest text-content-muted font-bold">Journey Breakdown</p>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            className={`text-content-muted transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        {expanded && (
+          <div className="px-4 pb-4 space-y-2.5">
+            {legs.map((leg, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                <p className="text-content-primary text-[13px] flex-1 truncate">{leg.from} → {leg.to}</p>
+                <p className="text-content-muted text-xs shrink-0">~{leg.durationMins} min</p>
+                <p className="text-content-primary text-[13px] font-semibold shrink-0 tabular-nums">₵{leg.fare.toFixed(2)}</p>
+              </div>
+            ))}
+            {result.finalWalk && (
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-content-muted shrink-0" />
+                <p className="text-content-secondary text-[13px] flex-1">Walk to destination</p>
+                <p className="text-content-muted text-xs">{formatDist(result.finalWalk.distanceM)}</p>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1 border-t border-stroke">
+              <p className="text-content-disabled text-[10px]">Fares may vary slightly</p>
+              {rushHour && <p className="text-[#f0c040]/70 text-[10px]">⏰ Rush hour — fares may be higher</p>}
+            </div>
+          </div>
         )}
-
-        {/* Alternate route note */}
-        {result.trotro?.alternateNote && (
-          <p className="text-content-disabled text-[10px] pt-1 border-t border-stroke">
-            💡 {result.trotro.alternateNote}
-          </p>
-        )}
-
-        {/* Peak-hour fare note */}
-        {(() => { const h = new Date().getHours(); return ((h >= 6 && h < 9) || (h >= 16 && h < 19)) ? (
-          <p className="text-[#f0c040]/70 text-[10px] pt-1 border-t border-stroke">
-            ⏰ Fares may be higher during rush hour
-          </p>
-        ) : null; })()}
-
-        {/* Fare disclaimer */}
-        <p className="text-content-disabled text-[9px]">Fares are estimates — confirm with the mate.</p>
       </div>
     </div>
   );
@@ -379,6 +438,10 @@ export default function HomePage() {
   const [homePlace,       setHomePlace]      = useState<{ name: string } | null>(null);
   const [workPlace,       setWorkPlace]      = useState<{ name: string } | null>(null);
   const [welcomeKey,      setWelcomeKey]     = useState(0);
+  const [suggestions,     setSuggestions]    = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isOffline,       setIsOffline]      = useState(false);
+  const [routeFeedback,   setRouteFeedback]  = useState<Record<string, "up" | "down">>({});
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const bottomRef    = useRef<HTMLDivElement>(null);
@@ -392,6 +455,7 @@ export default function HomePage() {
   const speechRecRef   = useRef<any>(null);
   const lastSearchRef        = useRef<{ destination: string; fromAddress?: string; coords?: { lat: number; lng: number } } | null>(null);
   const searchStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync
   useEffect(() => { resultRef.current  = result;  }, [result]);
@@ -444,6 +508,16 @@ export default function HomePage() {
     const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  // ── Offline detection ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setIsOffline(!navigator.onLine);
+    const on  = () => setIsOffline(false);
+    const off = () => setIsOffline(true);
+    window.addEventListener("online",  on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
   // ── Android keyboard: shrink container to visual viewport height ──────────
@@ -563,9 +637,7 @@ export default function HomePage() {
 
     const askManually = () => {
       botSay(
-        { type: "text", text: "Akwaaba! 👋" },
-        { type: "text", text: "Where are you going?" },
-        { type: "text", text: "e.g. *Teiman to Kaneshie*" },
+        { type: "text", text: "Akwaaba! Where are you going?" },
         { type: "chips", chips: EXAMPLE_CHIPS },
       );
     };
@@ -573,9 +645,7 @@ export default function HomePage() {
     const onGpsDenied = () => {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
       botSay(
-        { type: "text", text: "Akwaaba! 👋" },
-        { type: "text", text: "Location is off — no problem, just tell me where you are." },
-        { type: "text", text: "e.g. *I'm at Teiman, going to Kaneshie*" },
+        { type: "text", text: "Location is off — just tell me where you are and where you're going." },
         { type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] },
       );
     };
@@ -588,7 +658,7 @@ export default function HomePage() {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
         botSay(
-          { type: "text", text: "Got you 📍 Where are you going?" },
+          { type: "text", text: "Got you 📍 Where to?" },
           { type: "chips", chips: EXAMPLE_CHIPS },
         );
       },
@@ -725,6 +795,7 @@ export default function HomePage() {
     if (!t || processing) return;
     addMsg({ from: "user", type: "text", text: t });
     setInput("");
+    setSuggestions([]); setShowSuggestions(false);
     if (inputRef.current) inputRef.current.style.height = "auto";
 
     if (navigating) {
@@ -995,6 +1066,14 @@ export default function HomePage() {
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)]">
         <div className="mx-auto w-8 h-1 bg-stroke rounded-full mt-2.5 mb-1 shrink-0" />
 
+        {/* Offline banner */}
+        {isOffline && (
+          <div className="shrink-0 mx-4 mb-2 bg-surface-card border border-stroke rounded-xl px-4 py-2.5 flex items-center gap-2.5">
+            <span className="text-sm">📶</span>
+            <p className="text-content-secondary text-xs flex-1">You're offline — showing last saved route</p>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
 
@@ -1121,21 +1200,50 @@ export default function HomePage() {
                     const legs = r.trotro?.legs ?? [];
                     const destLabel = legs[legs.length - 1]?.to ?? "destination";
                     const isS = starred.some(s => s.origin === r.boardingStop.name && s.destination === destLabel);
+                    const feedback = routeFeedback[msg.id];
                     return (
                       <>
                         <RouteCard result={r} fare={msg.fare ?? null} />
-                        <div className="flex items-center gap-3 mt-0.5 ml-1">
-                          <button
-                            onClick={() => toggleStar(r.boardingStop.name, destLabel)}
-                            className={`text-[10px] active:opacity-60 transition-colors ${isS ? "text-[#f59e0b]" : "text-content-disabled hover:text-content-muted"}`}
-                          >
-                            {isS ? "★ Saved" : "☆ Save route"}
-                          </button>
-                          <span className="text-content-disabled text-[10px]">·</span>
-                          <button onClick={() => setReportingResult(r)}
-                            className="text-[10px] text-content-disabled hover:text-content-muted active:opacity-60 transition-colors">
-                            ⚠ Report
-                          </button>
+                        <div className="flex items-center gap-3 mt-1.5 ml-1 flex-wrap">
+                          {/* Thumbs */}
+                          <div className="flex items-center gap-1.5">
+                            {(["up","down"] as const).map(dir => (
+                              <button key={dir}
+                                onClick={() => {
+                                  vibrate();
+                                  setRouteFeedback(p => ({ ...p, [msg.id]: dir }));
+                                  fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ destination: destLabel, boardingStop: r.boardingStop.name, helpful: dir === "up" }) }).catch(() => {});
+                                }}
+                                className={`text-[11px] px-2.5 py-1 rounded-full border transition-all active:scale-95 ${
+                                  feedback === dir ? (dir === "up" ? "bg-accent/20 text-accent border-accent/40" : "bg-[#991b1b]/20 text-status-danger border-[#991b1b]/40") : "text-content-disabled border-stroke"
+                                }`}>
+                                {dir === "up" ? "👍" : "👎"}
+                              </button>
+                            ))}
+                            {feedback && <span className="text-content-muted text-[10px]">{feedback === "up" ? "Thanks!" : "Got it — we'll improve."}</span>}
+                          </div>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button onClick={() => { vibrate(); onChip("share_wa"); }}
+                              className="text-[10px] text-content-disabled hover:text-content-muted active:opacity-60 transition-colors">
+                              📤 Share
+                            </button>
+                            <span className="text-content-disabled text-[10px]">·</span>
+                            <button onClick={() => toggleStar(r.boardingStop.name, destLabel)}
+                              className={`text-[10px] active:opacity-60 transition-colors ${isS ? "text-[#f59e0b]" : "text-content-disabled hover:text-content-muted"}`}>
+                              {isS ? "★ Saved" : "☆ Save"}
+                            </button>
+                            <span className="text-content-disabled text-[10px]">·</span>
+                            <button onClick={() => setReportingResult(r)}
+                              className="text-[10px] text-content-disabled hover:text-content-muted active:opacity-60 transition-colors">
+                              ⚠ Report
+                            </button>
+                            <span className="text-content-disabled text-[10px]">·</span>
+                            <button onClick={() => { setMsgs(p => p.filter(m => m.id !== msg.id)); setResult(null); }}
+                              className="text-[10px] text-content-disabled hover:text-content-muted active:opacity-60 transition-colors">
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       </>
                     );
@@ -1157,14 +1265,44 @@ export default function HomePage() {
           <div ref={bottomRef} />
         </div>
 
+        {/* Autocomplete suggestions */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="shrink-0 mx-4 mb-1 bg-surface-card border border-stroke rounded-2xl overflow-hidden">
+            {suggestions.map((name) => (
+              <button key={name} onMouseDown={(e) => { e.preventDefault(); send(name); setSuggestions([]); setShowSuggestions(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 border-b border-stroke last:border-0 active:bg-surface-elevated transition-colors text-left">
+                <span className="text-content-muted text-sm">📍</span>
+                <span className="text-content-primary text-[13px]">{name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Input bar */}
         <div className="shrink-0 px-4 pb-safe pb-5 pt-3 flex gap-3 items-end border-t border-stroke">
           <div className="flex-1 bg-surface-card border border-stroke rounded-2xl px-4 py-3 focus-within:border-accent transition-colors">
             <textarea ref={inputRef} rows={1} value={input}
               onChange={(e) => {
-                setInput(e.target.value);
+                const val = e.target.value;
+                setInput(val);
                 e.target.style.height = "auto";
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 110)}px`;
+                // Autocomplete
+                if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+                if (val.trim().length >= 2) {
+                  suggestTimerRef.current = setTimeout(async () => {
+                    try {
+                      const r = await fetch(`/api/locations?q=${encodeURIComponent(val.trim())}`);
+                      if (r.ok) {
+                        const { locations } = await r.json() as { locations: { name: string }[] };
+                        setSuggestions(locations.map(l => l.name));
+                        setShowSuggestions(locations.length > 0);
+                      }
+                    } catch { /* ignore */ }
+                  }, 280);
+                } else {
+                  setSuggestions([]); setShowSuggestions(false);
+                }
               }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
               placeholder={
