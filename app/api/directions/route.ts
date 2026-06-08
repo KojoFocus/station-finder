@@ -565,6 +565,11 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Skip terminals with no trotro path AND not within walking distance.
+        // This prevents intercity hubs (e.g. Winneba Junction, Kasoa) from
+        // appearing as "Accra departure terminals" when the user is in Accra.
+        if (!trotroToTerminal && wd > 3000) continue;
+
         const trotroMins = trotroToTerminal?.totalMins ?? 0;
         const trotroFare = trotroToTerminal?.totalFare ?? 0;
 
@@ -627,11 +632,11 @@ export async function POST(req: NextRequest) {
       try {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
         const result = await model.generateContent(
-          `You are a friendly local trotro guide in Accra, Ghana. Someone near ${boardingStop.name} wants to get to "${destination}".
-Using your knowledge of Accra's trotro network, give them warm, practical directions in 2–3 sentences.
-Mention real station names, what the mate typically calls out, and a rough fare range if you know it.
-If you're not certain, frame it naturally — "you'll likely need to..." or "ask at the station for...".
-Write like a helpful local, not a robot. No bullet points, no markdown, no headers.`
+          `You are a confident, warm transit guide who knows Ghana's transport system inside out. Someone near ${boardingStop.name} wants to get to "${destination}".
+
+Give them practical directions in 2–3 sentences. Be specific: name the terminal or station to use in Accra, what service to board (trotro/STC/VIP/Metro Mass), a realistic fare in Ghana cedis, and rough journey time. If it's an intercity destination, mention the right terminal to depart from (STC, Neoplan, Madina Station, etc.).
+
+Write like a knowledgeable local friend. Natural Ghanaian-English. No bullet points, no markdown, no "I recommend" stiffness. If you're not 100% sure, frame it honestly but helpfully — "you'll want to head to..." or "ask at Circle for buses going to...".`
         );
         aiGuidance = result.response.text().trim();
       } catch { /* leave null — client shows fallback */ }

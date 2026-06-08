@@ -90,3 +90,13 @@
 .scroll-smooth {
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── Map thumbnail snap-in animation ── */
+@keyframes map-snap-in {
+  0%   { transform: scale(0) translate(12px, -12px); opacity: 0; }
+  65%  { transform: scale(1.08) translate(-2px, 2px); opacity: 1; }
+  100% { transform: scale(1) translate(0, 0); opacity: 1; }
+}
+.animate-map-snap {
+  animation: map-snap-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}

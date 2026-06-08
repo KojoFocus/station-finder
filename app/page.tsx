@@ -130,12 +130,13 @@ function renderText(text: string): React.ReactNode {
 
 // ─── MapPane ──────────────────────────────────────────────────────────────────
 
-function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand }: {
+function MapPane({ result, userLoc, navigating, height, expanded, mini, onToggleExpand }: {
   result: DirectionsResult | null;
   userLoc: { lat: number; lng: number } | null;
   navigating: boolean;
   height: string;
   expanded: boolean;
+  mini: boolean;
   onToggleExpand: () => void;
 }) {
   const map = (
@@ -159,7 +160,6 @@ function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand
     return (
       <div className="fixed inset-0 z-50 bg-[#0d1a0b]">
         {map}
-        {/* Back button */}
         <button
           onClick={onToggleExpand}
           className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-[#0d1a0b]/80 border border-stroke backdrop-blur-sm flex items-center justify-center text-content-primary active:scale-90 transition-all shadow-lg"
@@ -173,17 +173,27 @@ function MapPane({ result, userLoc, navigating, height, expanded, onToggleExpand
   }
 
   return (
-    <div className="shrink-0 px-4 pt-1 transition-all duration-[900ms] ease-in-out relative" style={{ height }}>
+    <div
+      className="shrink-0 overflow-hidden relative"
+      style={{
+        height: mini ? 0 : height,
+        paddingLeft:  mini ? 0 : '1rem',
+        paddingRight: mini ? 0 : '1rem',
+        paddingTop:   mini ? 0 : '0.25rem',
+        transition: 'height 580ms cubic-bezier(0.4,0,0.2,1), padding 580ms cubic-bezier(0.4,0,0.2,1)',
+      }}
+    >
       {map}
-      {/* Expand button */}
-      <button
-        onClick={onToggleExpand}
-        className="absolute top-3.5 right-6 z-10 w-8 h-8 rounded-full bg-black/50 border border-white/10 backdrop-blur-sm flex items-center justify-center text-white/70 active:scale-90 transition-all"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
-        </svg>
-      </button>
+      {!mini && (
+        <button
+          onClick={onToggleExpand}
+          className="absolute top-3.5 right-6 z-10 w-8 h-8 rounded-full bg-black/50 border border-white/10 backdrop-blur-sm flex items-center justify-center text-white/70 active:scale-90 transition-all"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -479,6 +489,9 @@ export default function HomePage() {
   const [hasSpeech,       setHasSpeech]      = useState(false);
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
   const [deviceId,        setDeviceId]       = useState<string>("");
+  const [mapMini,         setMapMini]        = useState(false);
+  const [showMiniBtn,     setShowMiniBtn]    = useState(false);
+  const [pendingClarification, setPendingClarification] = useState<{ destination: string; origin?: string } | null>(null);
   const [recentSearches,  setRecentSearches] = useState<{ id: string; origin: string; destination: string }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [installPrompt,   setInstallPrompt]  = useState<any>(null);
@@ -516,6 +529,24 @@ export default function HomePage() {
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
   useEffect(() => { langRef.current    = lang;    }, [lang]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  // Auto-collapse map after first user message
+  useEffect(() => {
+    const userCount = msgs.filter(m => m.from === "user").length;
+    if (userCount >= 1 && !mapMini && !navigating) {
+      const t = setTimeout(() => {
+        setMapMini(true);
+        setTimeout(() => setShowMiniBtn(true), 480);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs.length]);
+
+  // Re-expand map when navigating starts
+  useEffect(() => {
+    if (navigating) { setMapMini(false); setShowMiniBtn(false); }
+  }, [navigating]);
 
   // ── Device ID + recent search history ────────────────────────────────────
   useEffect(() => {
@@ -698,7 +729,7 @@ export default function HomePage() {
     const onGpsDenied = () => {
       setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
       botSay(
-        { type: "text", text: "Location is off — just tell me where you are and where you're going." },
+        { type: "text", text: "Location access is off. No problem — just tell me where you are and where you're headed." },
         { type: "chips", chips: [{ label: "📍 Try location again", action: "retry_gps" }] },
       );
     };
@@ -711,7 +742,7 @@ export default function HomePage() {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         setMsgs(p => p.filter(m => m.text !== "📍 Getting your location…"));
         botSay(
-          { type: "text", text: "Got you 📍 Where to?" },
+          { type: "text", text: "📍 Got your location. Where are you heading?" },
           { type: "chips", chips: EXAMPLE_CHIPS },
         );
       },
@@ -746,8 +777,8 @@ export default function HomePage() {
       setSearchStatus(null);
       if (!ok) {
         await botSay(
-          { type: "text", text: `I couldn't place "${destination}" on the map.` },
-          { type: "text", text: "Try a nearby area or landmark — like *Madina*, *Circle*, or *Legon*." },
+          { type: "text", text: `Hmm, I couldn't place **${destination}** on the map.` },
+          { type: "text", text: "Try a nearby landmark or area — like *Madina*, *Circle*, or *Tema*." },
         );
         setProcessing(false); return;
       }
@@ -756,12 +787,12 @@ export default function HomePage() {
         if (data.aiGuidance) {
           await botSay(
             { type: "text", text: data.aiGuidance },
-            { type: "text", text: "This is based on general knowledge — always confirm fares with the mate." },
+            { type: "text", text: "I don't have that route in my database yet — always confirm the fare at the terminal." },
           );
         } else {
           await botSay(
-            { type: "text", text: `I don't have a verified route to ${destination} yet.` },
-            { type: "text", text: `Your closest stop is **${data.boardingStop.name}** — you might find something heading that way.` },
+            { type: "text", text: `I don't have a verified route to **${destination}** yet.` },
+            { type: "text", text: `Nearest stop to you is **${data.boardingStop.name}** — head there and ask around.` },
           );
         }
         setProcessing(false); return;
@@ -776,23 +807,22 @@ export default function HomePage() {
 
           let summary: string;
           if (opts.length === 1) {
-            summary = `One terminal serves **${destination}** from Accra — **${best.boardingStop.name}**.${best.trotroToTerminal ? " I've mapped the trotro to get you there." : ""}`;
+            summary = `**${best.boardingStop.name}** is your stop for **${destination}**.${best.trotroToTerminal ? " I've mapped out how to get there from where you are." : ""}`;
           } else {
-            // Find nearest terminal to surface "closer isn't always better" insight
             const nearest = [...opts].sort((a, b) => a.boardingStop.distanceM - b.boardingStop.distanceM)[0];
             const nearestIsBest = nearest.boardingStop.name === best.boardingStop.name;
 
             if (!nearestIsBest) {
               const fareDiff = nearest.totalFare - best.totalFare;
               const timeDiff = nearest.totalMins - best.totalMins;
-              const saving = fareDiff > 5
-                ? `costs ~₵${Math.round(fareDiff)} more`
+              const why = fareDiff > 5
+                ? `you'd pay ~₵${Math.round(fareDiff)} more`
                 : timeDiff > 10
-                  ? `adds ~${Math.round(timeDiff)} min to your total journey`
-                  : "isn't the best fit for this route";
-              summary = `Found **${opts.length} terminals** for **${destination}**. **${best.boardingStop.name}** is the recommended option — **${nearest.boardingStop.name}** is closer but ${saving}. Browse all options below.`;
+                  ? `it adds ~${Math.round(timeDiff)} min to your total journey`
+                  : "it's not the best fit for this route";
+              summary = `${opts.length} terminals serve **${destination}** from Accra. I'd go with **${best.boardingStop.name}** — **${nearest.boardingStop.name}** is closer to you but ${why}. Swipe through to compare.`;
             } else {
-              summary = `Found **${opts.length} terminals** for **${destination}**. **${best.boardingStop.name}** is your best bet — ${fareRange(best.totalFare)} total, ~${busHrs} hr${busHrs !== 1 ? "s" : ""} bus ride. Compare all below.`;
+              summary = `${opts.length} terminals serve **${destination}** from Accra. **${best.boardingStop.name}** is the one — ${fareRange(best.totalFare)} all-in, ~${busHrs} hr${busHrs !== 1 ? "s" : ""} on the bus. Compare all options below.`;
             }
           }
 
@@ -902,6 +932,21 @@ export default function HomePage() {
       setNavigating(false);
     }
 
+    // ── Respond to a clarification question (e.g. "Did you mean Koforidua?") ─
+    if (pendingClarification) {
+      const affirm = /^(yes|yeah|yep|yh|yea|right|correct|exactly|ok|okay|sure|ja)/i.test(t);
+      const stored = pendingClarification;
+      setPendingClarification(null);
+      if (affirm) {
+        if (userLoc)          await search(stored.destination, undefined, userLoc);
+        else if (stored.origin) await search(stored.destination, stored.origin);
+        else if (knownOrigin)   await search(stored.destination, knownOrigin);
+        else { setPendingDest(stored.destination); await botSay({ type: "text", text: "Where are you coming from?" }); }
+        return;
+      }
+      // Not affirming — fall through and treat as fresh input
+    }
+
     // "Take me home / to work" shortcuts
     if (/\b(take me home|go home|i want to go home|head home)\b/i.test(t) && homePlace) {
       if (userLoc) { await search(homePlace.name, undefined, userLoc); return; }
@@ -933,10 +978,20 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: t, history: msgHistory }),
       })
-        .then((r) => (r.ok ? (r.json() as Promise<{ intent: string; origin: string | null; destination: string | null; locatedAt: string | null }>) : null))
+        .then((r) => (r.ok ? (r.json() as Promise<{ intent: string; origin: string | null; destination: string | null; locatedAt: string | null; clarificationQuestion: string | null }>) : null))
         .catch(() => null),
       new Promise<null>((res) => setTimeout(() => res(null), 2500)),
     ]);
+
+    // ── If Gemini is asking for clarification, surface it ─────────────────
+    if (gemini?.clarificationQuestion) {
+      if (gemini.destination) {
+        setPendingClarification({ destination: gemini.destination, origin: gemini.origin ?? undefined });
+      }
+      await botSay({ type: "text", text: gemini.clarificationQuestion });
+      setProcessing(false);
+      return;
+    }
 
     // Merge with regex fallback
     const regexParsed = parseInput(t);
@@ -948,13 +1003,13 @@ export default function HomePage() {
     if ((gemini?.intent === "location_update" || (!destination && locatedAt))) {
       const place = locatedAt ?? t;
       setKnownOrigin(place);
-      await botSay({ type: "text", text: `Got it — you're at **${place}**. Where are you heading?` });
+      await botSay({ type: "text", text: `Got it — you're at **${place}**. Where to?` });
       return;
     }
 
     // Non-travel intent (greeting, question, etc.)
     if (gemini?.intent === "other" && !destination) {
-      await botSay({ type: "text", text: "Just tell me where you'd like to go and I'll find you a trotro." });
+      await botSay({ type: "text", text: "What's your destination? Say something like *Madina* or *Takoradi* and I'll sort you out." });
       return;
     }
 
@@ -966,11 +1021,11 @@ export default function HomePage() {
     else {
       setPendingDest(destination);
       await botSay(
-        { type: "text", text: "Where are you coming from?" },
-        { type: "text", text: "Just the area — like *Teiman* or *Oyarifa*" },
+        { type: "text", text: "Where are you right now?" },
+        { type: "text", text: "Just the area — like *Madina* or *Circle*." },
       );
     }
-  }, [addMsg, botSay, pendingDest, processing, navigating, watchId, search, userLoc, knownOrigin, msgs, homePlace, workPlace]);
+  }, [addMsg, botSay, pendingDest, pendingClarification, processing, navigating, watchId, search, userLoc, knownOrigin, msgs, homePlace, workPlace]);
 
   // ── Deep link trigger (after send is defined) ─────────────────────────────
   useEffect(() => {
@@ -1176,7 +1231,30 @@ export default function HomePage() {
       </header>
 
       {/* Map */}
-      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} onToggleExpand={() => setMapExpanded(v => !v)} />
+      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={mapMini} onToggleExpand={() => setMapExpanded(v => !v)} />
+
+      {/* Mini map thumbnail — snaps into top-right corner when map collapses */}
+      <button
+        onClick={() => { setMapMini(false); setShowMiniBtn(false); }}
+        aria-label="Expand map"
+        className="fixed z-40 w-14 h-14 rounded-2xl bg-surface-card border border-stroke shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-90"
+        style={{
+          top: '56px', right: '12px',
+          transform: showMiniBtn ? 'scale(1)' : 'scale(0)',
+          opacity: showMiniBtn ? 1 : 0,
+          transformOrigin: 'top right',
+          transition: showMiniBtn
+            ? 'transform 380ms cubic-bezier(0.34,1.56,0.64,1), opacity 200ms'
+            : 'transform 200ms ease-in, opacity 150ms',
+          pointerEvents: showMiniBtn ? 'auto' : 'none',
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5" fill="currentColor" stroke="none"/>
+        </svg>
+        <span className="text-[8px] text-content-secondary font-medium uppercase tracking-wide">Map</span>
+      </button>
 
       {/* Chat sheet */}
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)]">
@@ -1378,13 +1456,13 @@ export default function HomePage() {
                           if (t && t.legs.length > 0) {
                             const firstLeg = t.legs[0];
                             botSay(
-                              { type: "text", text: `**${opt.boardingStop.name}** is your best bet for **${dest}**.` },
-                              { type: "text", text: `🚐 *Get to the terminal:* ${firstLeg.whatToLookFor}${t.legs.length > 1 ? ` then change at ${t.legs.at(-1)?.from}` : ""}. (~${t.totalMins} min, ${fareRange(t.totalFare)})` },
-                              { type: "text", text: `🚌 *At ${opt.boardingStop.name}:* ${busLeg.whatToLookFor} (~${hrs} hr${hrs !== 1 ? "s" : ""}, ${fareRange(busLeg.fare)})` },
+                              { type: "text", text: `Right. Here's your plan for **${dest}**:` },
+                              { type: "text", text: `🚐 *Getting to the terminal:* ${firstLeg.whatToLookFor}${t.legs.length > 1 ? ` — change at ${t.legs.at(-1)?.from}` : ""}. About ${t.totalMins} min, ${fareRange(t.totalFare)}.` },
+                              { type: "text", text: `🚌 *At ${opt.boardingStop.name}:* ${busLeg.whatToLookFor} — ~${hrs} hr${hrs !== 1 ? "s" : ""}, ${fareRange(busLeg.fare)}.` },
                             );
                           } else {
                             botSay(
-                              { type: "text", text: `**${opt.boardingStop.name}** for **${dest}** — ${fareRange(busLeg.fare)} · ~${hrs} hr${hrs !== 1 ? "s" : ""}.` },
+                              { type: "text", text: `You're close to **${opt.boardingStop.name}**. Here's what to do:` },
                               { type: "text", text: busLeg.whatToLookFor },
                             );
                           }
