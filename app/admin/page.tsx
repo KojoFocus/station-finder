@@ -96,7 +96,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATUS_BORDER: Record<string, string> = {
   PENDING:  "#f59e0b",
-  VERIFIED: "#4a7c59",
+  VERIFIED: "#2d9e5c",
   FLAGGED:  "#f87171",
   PROMOTED: "#60a5fa",
 };
@@ -200,8 +200,8 @@ function StopCard({
 }) {
   return (
     <div
-      className={`bg-surface-card border rounded-2xl overflow-hidden transition-all ${selected ? "border-accent/60 shadow-md shadow-[#4a7c59]/10" : "border-stroke"}`}
-      style={{ borderLeftColor: STATUS_BORDER[stop.status] ?? "#4a7c59", borderLeftWidth: 3 }}
+      className={`bg-surface-card border rounded-2xl overflow-hidden transition-all ${selected ? "border-accent/60 shadow-md shadow-[#2d9e5c]/10" : "border-stroke"}`}
+      style={{ borderLeftColor: STATUS_BORDER[stop.status] ?? "#2d9e5c", borderLeftWidth: 3 }}
     >
       <div className="p-4 flex flex-col gap-2.5">
         {/* Row 1: checkbox + name + badge */}
@@ -914,7 +914,7 @@ export default function AdminPage() {
             <div className="shrink-0 px-4 pb-3 flex items-center gap-4">
               {[
                 { color: "#f59e0b", label: "Pending",  count: stats?.pending  ?? 0 },
-                { color: "#4a7c59", label: "Verified", count: stats?.verified ?? 0 },
+                { color: "#2d9e5c", label: "Verified", count: stats?.verified ?? 0 },
                 { color: "#f87171", label: "Flagged",  count: stats?.flagged  ?? 0 },
               ].map((l) => (
                 <div key={l.label} className="flex items-center gap-1.5">

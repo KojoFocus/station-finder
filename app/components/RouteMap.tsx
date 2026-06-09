@@ -245,7 +245,7 @@ export default function RouteMap({
               opacity="0.15"/>
             <!-- Dot -->
             <circle cx="28" cy="28" r="8"
-              fill="#4a7c59"
+              fill="#2d9e5c"
               stroke="white"
               stroke-width="3"/>
             <!-- Dot inner highlight -->
@@ -315,7 +315,7 @@ export default function RouteMap({
           const el = document.createElement("div");
           el.innerHTML = `
             <div style="
-              background:#4a7c59;color:white;
+              background:#2d9e5c;color:white;
               width:42px;height:42px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
               border:2.5px solid white;
               display:flex;align-items:center;justify-content:center;font-size:19px;">

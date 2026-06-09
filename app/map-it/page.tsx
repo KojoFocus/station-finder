@@ -59,7 +59,7 @@ const SUCCESS_COPY: Record<SuccessAction, { headline: string; body: string }> = 
 
 const SUB_BORDER: Record<string, string> = {
   PENDING:  "#f59e0b",
-  VERIFIED: "#4a7c59",
+  VERIFIED: "#2d9e5c",
   FLAGGED:  "#f87171",
   PROMOTED: "#60a5fa",
 };
@@ -511,7 +511,7 @@ export default function MapItPage() {
               {submissions.map((s) => (
                 <div key={s.id}
                   className="bg-surface-card border border-stroke rounded-2xl p-4 flex flex-col gap-2"
-                  style={{ borderLeftColor: SUB_BORDER[s.status] ?? "#4a7c59", borderLeftWidth: 3 }}
+                  style={{ borderLeftColor: SUB_BORDER[s.status] ?? "#2d9e5c", borderLeftWidth: 3 }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-content-primary font-semibold text-sm leading-snug flex-1">{s.stopName}</p>

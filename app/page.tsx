@@ -94,12 +94,19 @@ function speak(text: string) {
   window.speechSynthesis.speak(u);
 }
 
+function looksLikeQuestion(t: string): boolean {
+  return /^(will|can|should|would|is|are|does|do|what|how|when|who|why|which|could|shall|has|have|did|was|were)\b/i.test(t)
+    && !/\b(to|from|bus|trotro|station|terminal|route|fare|cost|going|heading|travel|direction)\b/i.test(t);
+}
+
 function parseInput(text: string): { fromAddress?: string; destination?: string; locatedAt?: string } {
-  const atMatch = text.match(/^(?:i(?:'m|\s+am)\s+at|am\s+at)\s+(.+)$/i);
+  const t = text.trim();
+  if (looksLikeQuestion(t)) return {};
+  const atMatch = t.match(/^(?:i(?:'m|\s+am)\s+at|am\s+at)\s+(.+)$/i);
   if (atMatch) return { locatedAt: atMatch[1].trim() };
-  const m = text.match(/^(?:from\s+)?(.+?)\s+to\s+(.+)$/i);
+  const m = t.match(/^(?:from\s+)?(.+?)\s+to\s+(.+)$/i);
   if (m) return { fromAddress: m[1].trim(), destination: m[2].trim() };
-  return { destination: text.trim() };
+  return { destination: t };
 }
 
 async function fetchDirections(body: Record<string, unknown>) {
@@ -158,11 +165,11 @@ function MapPane({ result, userLoc, navigating, height, expanded, mini, onToggle
 
   if (expanded) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#0d1a0b]">
+      <div className="fixed inset-0 z-50 bg-canvas">
         {map}
         <button
           onClick={onToggleExpand}
-          className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-[#0d1a0b]/80 border border-stroke backdrop-blur-sm flex items-center justify-center text-content-primary active:scale-90 transition-all shadow-lg"
+          className="absolute top-4 left-4 z-10 w-10 h-10 rounded-full bg-canvas/80 border border-stroke backdrop-blur-sm flex items-center justify-center text-content-primary active:scale-90 transition-all shadow-lg"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
@@ -390,13 +397,13 @@ function FindYourWayModal({ station, userLoc, onClose }: {
 
 const C = {
   bg:      "#0d0d0d",
-  surface: "#1a1a1a",
-  up:      "#222222",
+  surface: "#1c1c1c",
+  up:      "#252525",
   border:  "#2a2a2a",
-  accent:  "#4a7c59",   // single green — CTA button only
-  hi:      "#f0f0f0",
+  accent:  "#2d9e5c",
+  hi:      "#ededed",
   mid:     "#888888",
-  low:     "#4a4a4a",
+  low:     "#606060",
 } as const;
 
 function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
@@ -1090,7 +1097,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: t, history: msgHistory }),
       })
-        .then((r) => (r.ok ? (r.json() as Promise<{ intent: string; origin: string | null; destination: string | null; locatedAt: string | null; clarificationQuestion: string | null }>) : null))
+        .then((r) => (r.ok ? (r.json() as Promise<{ intent: string; origin: string | null; destination: string | null; locatedAt: string | null; clarificationQuestion: string | null; conversationalReply: string | null }>) : null))
         .catch(() => null),
       new Promise<null>((res) => setTimeout(() => res(null), 2500)),
     ]);
@@ -1119,13 +1126,17 @@ export default function HomePage() {
       return;
     }
 
-    // Non-travel intent (greeting, question, etc.)
+    // Non-travel intent — answer the question, then stay available
     if (gemini?.intent === "other" && !destination) {
-      await botSay({ type: "text", text: "Where are you going?" });
+      await botSay({ type: "text", text: gemini.conversationalReply ?? "I'm your Ghana transit companion — where are you headed? I'll find the best station and route for you." });
       return;
     }
 
-    if (!destination) return;
+    // No destination detected (question / greeting that slipped past Gemini timeout)
+    if (!destination) {
+      await botSay({ type: "text", text: "I'm your Ghana transit companion — where are you headed? I'll find the best station and route for you." });
+      return;
+    }
 
     if (fromAddress)      await search(destination, fromAddress);
     else if (userLoc)     await search(destination, undefined, userLoc);

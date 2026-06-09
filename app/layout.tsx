@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   userScalable: false,
   // Respect the device's safe area (notch, home bar)
   viewportFit: "cover",
-  themeColor: "#0d1a0b",
+  themeColor: "#0d0d0d",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-[#0d1a0b]" suppressHydrationWarning>
+      <body className="antialiased bg-canvas" suppressHydrationWarning>
         {children}
         <Script id="sw" strategy="afterInteractive">
           {`if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');`}

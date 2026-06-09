@@ -37,7 +37,7 @@
   --text-primary:       #ededed;   /* Headings, body, primary labels      */
   --text-secondary:     #888888;   /* Sub-labels, metadata, captions      */
   --text-muted:         #555555;   /* Timestamps, helper text             */
-  --text-disabled:      #3a3a3a;   /* Disabled controls, ghost text       */
+  --text-disabled:      #606060;   /* Disabled controls, ghost text       */
   --text-placeholder:   #444444;   /* Input placeholders                  */
 
   /* ── 10% BRAND ACCENT ────────────────────────────────────────────────────
@@ -45,11 +45,11 @@
      focused input borders, progress indicators, verification dots.
      Everything else uses neutrals above.                                */
 
-  --accent-interactive: #4a7c59;                    /* Primary brand green       */
-  --accent-pressed:     #3d6649;                    /* Darker on tap/press       */
-  --accent-subtle:      rgba(74, 124, 89, 0.12);    /* Ghost fill (checkboxes,   */
+  --accent-interactive: #2d9e5c;                    /* Primary brand green       */
+  --accent-pressed:     #258a4e;                    /* Darker on tap/press       */
+  --accent-subtle:      rgba(45, 158, 92, 0.12);    /* Ghost fill (checkboxes,   */
                                                     /* selected row bg, etc.)    */
-  --accent-glow:        rgba(74, 124, 89, 0.28);    /* Box-shadow / focus ring   */
+  --accent-glow:        rgba(45, 158, 92, 0.28);    /* Box-shadow / focus ring   */
 
   /* ── GAMIFICATION ACCENT (separate from brand — reward signal only) ────── */
 

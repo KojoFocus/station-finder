@@ -9,19 +9,31 @@ export interface IntentResult {
   destination:          string | null;
   locatedAt:            string | null;
   clarificationQuestion: string | null;
+  conversationalReply:  string | null;
 }
 
 // ── Regex fallback — works offline / when Gemini is slow ─────────────────────
 
+const OTHER: IntentResult = { intent: "other", origin: null, destination: null, locatedAt: null, clarificationQuestion: null, conversationalReply: null };
+
+function looksLikeQuestion(t: string): boolean {
+  return /^(will|can|should|would|is|are|does|do|what|how|when|who|why|which|could|shall|has|have|did|was|were)\b/i.test(t)
+    && !/\b(to|from|bus|trotro|station|terminal|route|fare|cost|going|heading|travel|direction)\b/i.test(t);
+}
+
 function regexExtract(message: string): IntentResult {
   const t = message.trim();
+  if (looksLikeQuestion(t)) return OTHER;
   const atMatch = t.match(/^(?:i(?:'m|\s+am)\s+at|am\s+at)\s+(.+)$/i);
-  if (atMatch) return { intent: "location_update", origin: null, destination: null, locatedAt: atMatch[1].trim(), clarificationQuestion: null };
+  if (atMatch) return { intent: "location_update", origin: null, destination: null, locatedAt: atMatch[1].trim(), clarificationQuestion: null, conversationalReply: null };
   const fromTo = t.match(/^(?:from\s+)?(.+?)\s+to\s+(.+)$/i);
-  if (fromTo) return { intent: "route", origin: fromTo[1].trim(), destination: fromTo[2].trim(), locatedAt: null, clarificationQuestion: null };
+  if (fromTo) return { intent: "route", origin: fromTo[1].trim(), destination: fromTo[2].trim(), locatedAt: null, clarificationQuestion: null, conversationalReply: null };
+  // Extract destination from common travel phrases
+  const destMatch = t.match(/(?:going to|get to|heading to|travel to|go to|bus to|trotro to|reach|take me to|route to|way to)\s+(.+)/i);
+  if (destMatch) return { intent: "route", origin: null, destination: destMatch[1].trim(), locatedAt: null, clarificationQuestion: null, conversationalReply: null };
   if (t.split(/\s+/).length <= 4)
-    return { intent: "route", origin: null, destination: t, locatedAt: null, clarificationQuestion: null };
-  return { intent: "other", origin: null, destination: null, locatedAt: null, clarificationQuestion: null };
+    return { intent: "route", origin: null, destination: t, locatedAt: null, clarificationQuestion: null, conversationalReply: null };
+  return OTHER;
 }
 
 // ── Gemini intent extraction ──────────────────────────────────────────────────
@@ -36,7 +48,7 @@ async function geminiExtract(
     ? `\nRecent conversation:\n${history.map((m) => `${m.role}: ${m.text}`).join("\n")}\n`
     : "";
 
-  const prompt = `You are a transit assistant for Ghana. Extract travel intent from the user's message — even with typos, Ghanaian pronunciations, or informal spelling.
+  const prompt = `You are a knowledgeable travel companion for Ghana. You help people navigate Ghana's public transport — trotros, intercity buses, STC, VIP, and everything in between. You also answer general travel questions like a local friend would.
 
 ${ctx}User's latest message: "${message.replace(/"/g, '\\"')}"
 
@@ -68,16 +80,21 @@ Return ONLY valid JSON — no markdown, no explanation:
   "origin": "<where they're coming from, or null>",
   "destination": "<where they want to go, corrected if misspelled, or null>",
   "locatedAt": "<only if they said 'I'm at X' with NO destination, else null>",
-  "clarificationQuestion": "<short conversational follow-up if genuinely ambiguous, else null>"
+  "clarificationQuestion": "<short conversational follow-up if genuinely ambiguous, else null>",
+  "conversationalReply": "<helpful friendly reply when intent is 'other', else null>"
 }
 
-Rules:
-- "route" = user wants directions (even if origin is missing)
-- "location_update" = user is only saying where they are now, no destination
-- "other" = greetings, thanks, unrelated questions
+Intent rules (be aggressive about finding travel intent):
+- "route" = user wants to travel somewhere — even indirect phrasing counts: "I need to get to...", "how do I reach...", "I'm going to...", "what's the bus to...", "can I get to...", "I want to travel to...", "take me to...", "heading to...", any mention of a destination
+- "location_update" = user is ONLY saying where they currently are, no destination mentioned
+- "other" = truly no destination and no travel route request (greetings, general questions, weather, packing tips, safety, timing questions without a specific destination)
+
+When intent is "other" you MUST write a conversationalReply — a helpful, friendly answer as a Ghana transit expert. Examples of what to cover: weather and what to pack, best time to travel, safety tips, cost expectations, what to expect at terminals, how long journeys take, food options, local customs. Be warm and specific. 2-3 sentences max.
+
+Additional rules:
 - If you recognise a Ghanaian place even with typos, correct it and leave clarificationQuestion null
 - Only use clarificationQuestion if the destination is truly unrecognisable — keep it short (e.g. "Did you mean Koforidua?")
-- Return place names as clean, standard forms — not the user's raw misspelling
+- Return place names as clean standard forms — not the user's raw misspelling
 - If the message is just a place name or short phrase, assume "route" with that as destination
 - Use conversation history to fill in missing context`;
 

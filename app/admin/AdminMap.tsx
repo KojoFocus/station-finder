@@ -14,7 +14,7 @@ export interface StopPin {
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  "#f59e0b",
-  VERIFIED: "#4a7c59",
+  VERIFIED: "#2d9e5c",
   FLAGGED:  "#f87171",
 };
 
@@ -52,7 +52,7 @@ export default function AdminMap({ stops }: { stops: StopPin[] }) {
       }).addTo(map);
 
       stops.forEach((stop) => {
-        const color = STATUS_COLOR[stop.status] ?? "#4a7c59";
+        const color = STATUS_COLOR[stop.status] ?? "#2d9e5c";
         const icon  = L.divIcon({
           html: `<div style="width:14px;height:14px;background:${color};border-radius:50%;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.45)"></div>`,
           iconSize:   [14, 14],
