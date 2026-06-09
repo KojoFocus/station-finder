@@ -371,8 +371,10 @@ function FindYourWayModal({ station, userLoc, onClose }: {
         <div className="flex gap-3 px-5 mb-5">
           {APPS.map(a => (
             <button key={a.id} onClick={() => openApp(a)}
-              className="flex-1 py-4 rounded-2xl bg-surface-card border border-stroke text-content-primary font-semibold text-sm active:scale-95 transition-all">
-              {a.label}
+              className="flex-1 py-3 rounded-2xl bg-surface-card border border-stroke flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/images/${a.id}.png`} alt={a.label} className="h-6 w-auto object-contain" />
+              <span className="text-content-secondary text-[10px]">{a.label}</span>
             </button>
           ))}
         </div>
@@ -662,12 +664,9 @@ export default function HomePage() {
   useEffect(() => { langRef.current    = lang;    }, [lang]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
-  // Expand map when a route result arrives
-  useEffect(() => { if (result) setMapMini(false); }, [result]);
-
-  // Re-expand map when navigating starts
+  // Open full-screen map when navigation starts
   useEffect(() => {
-    if (navigating) setMapMini(false);
+    if (navigating) setMapExpanded(true);
   }, [navigating]);
 
   // ── Device ID + recent search history ────────────────────────────────────
@@ -1356,9 +1355,9 @@ export default function HomePage() {
               ✕ Clear
             </button>
           )}
-          {/* Map toggle — only visible when a route is active */}
-          {(result || navigating) && <button
-            onClick={() => { setMapMini(false); setMapExpanded(true); }}
+          {/* Map toggle — always in top-right corner */}
+          <button
+            onClick={() => setMapExpanded(true)}
             aria-label="Open map"
             className="overflow-hidden rounded-xl active:scale-90 transition-all border border-accent/30"
             style={{ width: 58, height: 36 }}
@@ -1377,12 +1376,12 @@ export default function HomePage() {
                 </svg>
               </div>
             )}
-          </button>}
+          </button>
         </div>
       </header>
 
-      {/* Map — only rendered when a route is active */}
-      {(result || navigating) && <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={mapMini} onToggleExpand={() => setMapExpanded(v => !v)} />}
+      {/* Map — panel always hidden (mini=true); only full-screen on tap */}
+      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={true} onToggleExpand={() => setMapExpanded(false)} />
 
       {/* Chat sheet */}
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)] relative">
