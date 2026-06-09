@@ -395,12 +395,11 @@ const C = {
   border:   "#1f2e1f",
   borderUp: "#2a3f2a",
   green:    "#4a7c59",
-  greenDim: "#2d5040",
+  greenDim: "#1e2e1e",
   greenGlow:"#6aac7a",
   hi:       "#e4f0e0",
   mid:      "#9ab89a",
   low:      "#506050",
-  gold:     "#c8a84b",
 } as const;
 
 function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
@@ -435,12 +434,12 @@ function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 24, overflow: "hidden", width: "100%" }}>
 
       {/* Gradient header */}
-      <div style={{ background: `linear-gradient(135deg, ${C.greenDim}, #1a3028)`, padding: "14px 18px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: C.greenDim, padding: "14px 18px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <svg width="12" height="12" viewBox="0 0 10 10">
-            <polygon points="5,1 6.5,3.8 9.5,4.2 7.3,6.3 7.9,9.3 5,7.7 2.1,9.3 2.7,6.3 0.5,4.2 3.5,3.8" fill={C.gold}/>
+            <polygon points="5,1 6.5,3.8 9.5,4.2 7.3,6.3 7.9,9.3 5,7.7 2.1,9.3 2.7,6.3 0.5,4.2 3.5,3.8" fill={C.greenGlow}/>
           </svg>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: C.gold, textTransform: "uppercase" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: C.greenGlow, textTransform: "uppercase" }}>
             {label}
           </span>
         </div>
