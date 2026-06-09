@@ -276,119 +276,203 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
   );
 }
 
-// ─── StationsCard ─────────────────────────────────────────────────────────────
+// ─── Station card helpers ──────────────────────────────────────────────────────
 
-function StationsCard({ options, onSelect }: {
-  options: StationOption[];
-  onSelect: (opt: StationOption) => void;
+function stationInsight(opt: StationOption, idx: number, all: StationOption[]): string {
+  const h = new Date().getHours();
+  const rush = (h >= 6 && h < 9) || (h >= 16 && h < 20);
+  if (all.length === 1) return rush ? "Good option right now — terminal loads fairly quickly at this hour." : "Straightforward route from your location.";
+
+  const byFare = [...all].sort((a, b) => a.totalFare - b.totalFare);
+  const byTime = [...all].sort((a, b) => a.totalMins - b.totalMins);
+  const cheapest = byFare[0].boardingStop.name === opt.boardingStop.name;
+  const fastest  = byTime[0].boardingStop.name === opt.boardingStop.name;
+
+  if (idx === 0) {
+    if (cheapest && fastest) return rush ? "Fastest and cheapest right now — solid pick during rush hour." : "Best value and quickest route from your location.";
+    if (cheapest) return "Most affordable option for this route.";
+    if (fastest)  return rush ? "Loads up fast — less waiting during rush hour." : "Gets you on the road quicker than the others.";
+    return "Best balance of cost and time for this route.";
+  }
+  const best = all[0];
+  const fd = opt.totalFare - best.totalFare;
+  const td = opt.totalMins - best.totalMins;
+  if (fd < -5) return `Saves about ₵${Math.abs(Math.round(fd))} compared to the top pick.`;
+  if (td < -15) return `About ${Math.abs(Math.round(td))} min faster than the top pick.`;
+  return "Alternative route — similar cost and time.";
+}
+
+function stationLabel(opt: StationOption, all: StationOption[]): { text: string; accent: boolean } {
+  const byFare = [...all].sort((a, b) => a.totalFare - b.totalFare);
+  const byTime = [...all].sort((a, b) => a.totalMins - b.totalMins);
+  if (byFare[0].boardingStop.name === opt.boardingStop.name) return { text: "Cheapest option", accent: false };
+  if (byTime[0].boardingStop.name === opt.boardingStop.name) return { text: "Fastest option", accent: false };
+  return { text: "Alternative", accent: false };
+}
+
+// ─── FindYourWayModal ─────────────────────────────────────────────────────────
+
+function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
+  station: { name: string; lat: number; lng: number };
+  userLoc: { lat: number; lng: number } | null;
+  onClose: () => void;
+  onMapExpand: () => void;
 }) {
-  const [idx, setIdx] = useState(0);
-  const opt = options[idx];
-  const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
-  const busLeg = opt.legs[0];
-  const busHrs = busLeg ? Math.round(busLeg.durationMins / 60 * 10) / 10 : 0;
-  const hasT = isIntercity && opt.trotroToTerminal && opt.trotroToTerminal.legs.length > 0;
+  const APPS = [
+    { id: "uber",  label: "Uber",  icon: "U" },
+    { id: "bolt",  label: "Bolt",  icon: "B" },
+    { id: "yango", label: "Yango", icon: "Y" },
+  ];
+
+  const openRideApp = (app: string) => {
+    const { lat, lng, name } = station;
+    const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    let deep = "";
+    if (app === "uber")  deep = `uber://?action=setPickup${userLoc ? `&pickup[latitude]=${userLoc.lat}&pickup[longitude]=${userLoc.lng}` : ""}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${encodeURIComponent(name)}`;
+    if (app === "bolt")  deep = `taxify://route?end_latitude=${lat}&end_longitude=${lng}`;
+    if (app === "yango") deep = `yango://open-app?action=yandex-maps-route&lat=${lat}&lon=${lng}`;
+    window.location.href = deep;
+    setTimeout(() => window.open(gmaps, "_blank"), 1500);
+    onClose();
+  };
+
+  const openGoogleMaps = () => {
+    const { lat, lng } = station;
+    const url = userLoc
+      ? `https://www.google.com/maps/dir/${userLoc.lat},${userLoc.lng}/${lat},${lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(url, "_blank");
+    onClose();
+  };
 
   return (
-    <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
-      {/* Dot indicator + recommended badge */}
-      {options.length > 1 && (
-        <div className="flex items-center justify-between px-4 pt-3 pb-0">
-          <div className="flex items-center gap-2">
-            <p className="text-content-disabled text-[10px]">{idx + 1} of {options.length}</p>
-            {idx === 0 && (
-              <span className="text-[9px] font-semibold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                Recommended
-              </span>
-            )}
-          </div>
-          <div className="flex gap-1.5">
-            {options.map((_, i) => (
-              <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === idx ? "bg-accent" : "bg-stroke"}`} />
+    <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={onClose}>
+      <div className="w-full bg-raised rounded-t-3xl pb-10" onClick={e => e.stopPropagation()}>
+        <div className="w-8 h-1 bg-stroke rounded-full mx-auto mt-3 mb-5" />
+        <p className="text-content-primary font-bold text-base px-5">Get to {station.name}</p>
+        <p className="text-content-muted text-xs px-5 mt-0.5 mb-5">Pick how you want to get there</p>
+
+        <div className="px-5 mb-4">
+          <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-3">Book a ride</p>
+          <div className="flex gap-3">
+            {APPS.map(a => (
+              <button key={a.id} onClick={() => openRideApp(a.id)}
+                className="flex-1 py-4 rounded-2xl bg-surface-card border border-stroke flex flex-col items-center gap-2 active:scale-95 transition-all">
+                <div className="w-9 h-9 rounded-full bg-surface-elevated flex items-center justify-center">
+                  <span className="text-content-primary font-black text-base">{a.icon}</span>
+                </div>
+                <span className="text-xs text-content-secondary font-medium">{a.label}</span>
+              </button>
             ))}
           </div>
         </div>
-      )}
 
-      <div className="px-4 py-4">
-        {/* Station name */}
-        <p className="text-content-primary font-bold text-base leading-snug">{opt.boardingStop.name}</p>
-
-        {/* Fare + time stats */}
-        <div className="flex items-center gap-4 mt-3">
-          <div>
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest">Total fare</p>
-            <p className="text-content-primary font-bold text-lg tabular-nums">{fareRange(opt.totalFare)}</p>
-          </div>
-          <div className="w-px h-8 bg-stroke" />
-          <div>
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest">{isIntercity ? "Bus time" : "Journey"}</p>
-            <p className="text-content-primary font-bold text-lg">
-              {isIntercity ? `~${busHrs} hr${busHrs !== 1 ? "s" : ""}` : `~${opt.totalMins} min`}
-            </p>
-          </div>
-          <div className="w-px h-8 bg-stroke" />
-          <div>
-            <p className="text-content-disabled text-[9px] uppercase tracking-widest">{isIntercity ? "Terminal" : "Walk"}</p>
-            <p className="text-content-primary font-bold text-lg">
-              {isIntercity ? formatDist(opt.boardingStop.distanceM) : `${opt.boardingStop.walkingMins} min`}
-            </p>
-          </div>
+        <div className="px-5 space-y-3">
+          <button onClick={() => { onMapExpand(); onClose(); }}
+            className="w-full py-3.5 rounded-2xl bg-surface-card border border-stroke text-content-primary font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+            </svg>
+            Show on map
+          </button>
+          <button onClick={openGoogleMaps}
+            className="w-full py-3.5 rounded-2xl bg-accent text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>
+            Walking directions
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Intercity two-part journey breakdown */}
-        {isIntercity && (
-          <div className="mt-3 space-y-2">
-            {hasT ? (
-              <div className="bg-surface-elevated rounded-xl px-3 py-2.5">
-                <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">🚐 Trotro to terminal</p>
-                {opt.trotroToTerminal!.legs.map((leg, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <div className="w-1 h-1 rounded-full bg-accent mt-1.5 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-content-secondary text-[11px] leading-snug">
-                        <span className="font-medium">{leg.from} → {leg.to}</span>
-                        <span className="text-content-muted"> · ~{leg.durationMins} min · {fareRange(leg.fare)}</span>
-                      </p>
-                      <p className="text-content-muted text-[10px] leading-snug mt-0.5">{leg.whatToLookFor}</p>
-                    </div>
-                  </div>
-                ))}
-                <p className="text-content-muted text-[10px] mt-1.5">
-                  ~{opt.trotroToTerminal!.totalMins} min · {fareRange(opt.trotroToTerminal!.totalFare)}
-                </p>
-              </div>
-            ) : (
-              <div className="bg-surface-elevated rounded-xl px-3 py-2">
-                <p className="text-content-muted text-[11px]">📍 {formatDist(opt.boardingStop.distanceM)} from your location</p>
-              </div>
-            )}
-            <div className="bg-surface-elevated rounded-xl px-3 py-2.5">
-              <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1">🚌 Intercity bus</p>
-              <p className="text-content-secondary text-[11px] leading-snug">{busLeg?.whatToLookFor}</p>
-              <p className="text-content-muted text-[10px] mt-1">{fareRange(busLeg?.fare ?? 0)} · ~{busHrs} hr{busHrs !== 1 ? "s" : ""}</p>
-            </div>
+// ─── StationsCard ─────────────────────────────────────────────────────────────
+
+function StationsCard({ options, onSelect, onTips, onFindWay }: {
+  options: StationOption[];
+  onSelect: (opt: StationOption) => void;
+  onTips: (opt: StationOption) => void;
+  onFindWay: (opt: StationOption) => void;
+}) {
+  const [idx, setIdx] = useState(0);
+  const opt  = options[idx];
+  const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
+  const busLeg = opt.legs[0];
+  const busHrs = busLeg ? Math.round(busLeg.durationMins / 60 * 10) / 10 : 0;
+  const isRec  = idx === 0;
+  const label  = isRec ? null : stationLabel(opt, options);
+  const insight = stationInsight(opt, idx, options);
+  const hasT   = isIntercity && opt.trotroToTerminal && opt.trotroToTerminal.legs.length > 0;
+
+  return (
+    <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
+
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-0">
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${isRec ? "text-accent" : "text-content-muted"}`}>
+          {isRec ? "★ Recommended" : label?.text}
+        </span>
+        {options.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-content-disabled text-[10px]">{idx + 1} / {options.length}</span>
+            <button onClick={() => setIdx((idx + 1) % options.length)}
+              className="text-[10px] text-accent border border-accent/30 px-2.5 py-0.5 rounded-full active:opacity-70">
+              Next
+            </button>
           </div>
-        )}
-
-        {/* Traffic note */}
-        {opt.trafficNote && (
-          <p className="text-[#f0c040]/80 text-xs mt-3">⚠ {opt.trafficNote}</p>
         )}
       </div>
 
-      {/* Actions */}
+      {/* Terminal name */}
+      <div className="px-4 pt-2.5 pb-1">
+        <p className="text-content-primary font-bold text-[22px] leading-tight">
+          Take {opt.boardingStop.name}
+        </p>
+      </div>
+
+      {/* Insight / context */}
+      <div className="px-4 pb-4">
+        <p className="text-content-secondary text-sm leading-relaxed">{insight}</p>
+      </div>
+
+      {/* Natural-language stats */}
+      <div className="px-4 pb-4 space-y-1.5 border-t border-stroke pt-3">
+        <p className="text-content-primary text-sm">About <span className="font-semibold">{fareRange(opt.totalFare)}</span> total</p>
+        <p className="text-content-primary text-sm">
+          About <span className="font-semibold">
+            {isIntercity ? `${busHrs} hour${busHrs !== 1 ? "s" : ""}` : `${opt.totalMins} min`}
+          </span> {isIntercity ? "journey" : "total"}
+        </p>
+        <p className="text-content-primary text-sm">About <span className="font-semibold">{formatDist(opt.boardingStop.distanceM)}</span> from you</p>
+      </div>
+
+      {/* Trotro breakdown — shown when there's a trotro leg to get to the terminal */}
+      {hasT && (
+        <div className="mx-4 mb-3 bg-surface-elevated rounded-xl px-3 py-2.5">
+          <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">🚐 Trotro to terminal</p>
+          {opt.trotroToTerminal!.legs.map((leg, i) => (
+            <p key={i} className="text-content-secondary text-[11px] leading-snug">
+              {leg.from} → {leg.to} · ~{leg.durationMins} min · {fareRange(leg.fare)}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Action buttons */}
       <div className="flex gap-2 px-4 pb-4">
-        <button onClick={() => onSelect(opt)}
-          className="flex-1 py-2.5 rounded-xl bg-accent text-white text-xs font-semibold active:scale-95 transition-all">
-          Use this →
+        <button onClick={() => onTips(opt)}
+          className="flex-1 py-3 rounded-xl border border-stroke text-content-secondary text-sm font-semibold active:scale-95 transition-all flex items-center justify-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Tips
         </button>
-        {options.length > 1 && (
-          <button onClick={() => setIdx((idx + 1) % options.length)}
-            className="px-4 py-2.5 rounded-xl border border-stroke text-content-secondary text-xs active:scale-95 transition-all">
-            Next
-          </button>
-        )}
+        <button onClick={() => { onSelect(opt); onFindWay(opt); }}
+          className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-semibold active:scale-95 transition-all">
+          Find your way →
+        </button>
       </div>
     </div>
   );
@@ -490,7 +574,7 @@ export default function HomePage() {
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
   const [deviceId,        setDeviceId]       = useState<string>("");
   const [mapMini,         setMapMini]        = useState(false);
-  const [showMiniBtn,     setShowMiniBtn]    = useState(false);
+  const [findWayStation,  setFindWayStation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{ destination: string; origin?: string } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [installPrompt,   setInstallPrompt]  = useState<any>(null);
@@ -531,17 +615,14 @@ export default function HomePage() {
 
   // Auto-collapse map 3 seconds after app opens
   useEffect(() => {
-    const t = setTimeout(() => {
-      setMapMini(true);
-      setTimeout(() => setShowMiniBtn(true), 480);
-    }, 3000);
+    const t = setTimeout(() => setMapMini(true), 3000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Re-expand map when navigating starts
   useEffect(() => {
-    if (navigating) { setMapMini(false); setShowMiniBtn(false); }
+    if (navigating) setMapMini(false);
   }, [navigating]);
 
   // ── Device ID + recent search history ────────────────────────────────────
@@ -715,7 +796,7 @@ export default function HomePage() {
     const askManually = () => {
       removeTyping();
       botSay(
-        { type: "text", text: "Akwaaba 👋 Where to?" },
+        { type: "text", text: "Where are you going? I'll find the best station." },
         { type: "chips", chips: EXAMPLE_CHIPS },
       );
     };
@@ -737,7 +818,7 @@ export default function HomePage() {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         removeTyping();
         botSay(
-          { type: "text", text: "Where to?" },
+          { type: "text", text: "Where are you going? I'll find the best station." },
           { type: "chips", chips: EXAMPLE_CHIPS },
         );
       },
@@ -798,7 +879,7 @@ export default function HomePage() {
 
           let summary: string;
           if (opts.length === 1) {
-            summary = `**${best.boardingStop.name}** is your stop for **${destination}**.${best.trotroToTerminal ? " I've mapped out how to get there from where you are." : ""}`;
+            summary = `I'm recommending **${best.boardingStop.name}** for **${destination}**.${best.trotroToTerminal ? " I've mapped out how to get there from where you are." : ""}`;
           } else {
             const nearest = [...opts].sort((a, b) => a.boardingStop.distanceM - b.boardingStop.distanceM)[0];
             const nearestIsBest = nearest.boardingStop.name === best.boardingStop.name;
@@ -811,9 +892,9 @@ export default function HomePage() {
                 : timeDiff > 10
                   ? `it adds ~${Math.round(timeDiff)} min to your total journey`
                   : "it's not the best fit for this route";
-              summary = `${opts.length} terminals serve **${destination}** from Accra. I'd go with **${best.boardingStop.name}** — **${nearest.boardingStop.name}** is closer to you but ${why}. Swipe through to compare.`;
+              summary = `I'd take **${best.boardingStop.name}** for **${destination}** — **${nearest.boardingStop.name}** is closer to you but ${why}. Swipe to compare all ${opts.length} options.`;
             } else {
-              summary = `${opts.length} terminals serve **${destination}** from Accra. **${best.boardingStop.name}** is the one — ${fareRange(best.totalFare)} all-in, ~${busHrs} hr${busHrs !== 1 ? "s" : ""} on the bus. Compare all options below.`;
+              summary = `For **${destination}**, I'm recommending **${best.boardingStop.name}** — ${fareRange(best.totalFare)} all-in, ~${busHrs} hr${busHrs !== 1 ? "s" : ""} on the bus. Compare all ${opts.length} options below.`;
             }
           }
 
@@ -1067,6 +1148,29 @@ export default function HomePage() {
     botSay({ type: "text", text: "Stopped. Where next?" });
   }, [watchId, botSay]);
 
+  const handleTips = useCallback(async (opt: StationOption) => {
+    const dest = lastSearchRef.current?.destination ?? "your destination";
+    addMsg({ from: "bot", type: "typing" });
+    try {
+      const res = await fetch("/api/tips", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ terminal: opt.boardingStop.name, destination: dest }),
+      });
+      removeTyping();
+      if (res.ok) {
+        const { tips } = await res.json() as { tips: string[] };
+        if (tips.length) {
+          for (const tip of tips) await botSay({ type: "text", text: tip });
+        } else {
+          await botSay({ type: "text", text: "No tips available right now — ask the station master when you arrive." });
+        }
+      }
+    } catch {
+      removeTyping();
+      await botSay({ type: "text", text: "Couldn't load tips — check your connection and try again." });
+    }
+  }, [addMsg, removeTyping, botSay]);
+
   // ── Voice input ────────────────────────────────────────────────────────────
   const toggleVoiceInput = useCallback(() => {
     if (listening) { speechRecRef.current?.stop(); setListening(false); return; }
@@ -1182,63 +1286,27 @@ export default function HomePage() {
               Stop
             </button>
           )}
-          {/* Twi toggle */}
-          <button
-            onClick={() => {
-              const next = lang === "en" ? "tw" : "en";
-              setLang(next);
-              localStorage.setItem("sf_lang", next);
-              translationCache.current.clear();
-              botSay({ type: "text", text: next === "tw" ? "Twi mode yɛ so. Mɛkasa Twi." : "Back to English." });
-            }}
-            className={`whitespace-nowrap text-[10px] px-2.5 py-1.5 rounded-full border active:scale-95 transition-all ${lang === "tw" ? "bg-accent/20 text-accent border-accent/40" : "text-content-muted border-stroke"}`}
-          >
-            {lang === "tw" ? "TW" : "EN"}
-          </button>
-          <button onClick={() => setVoiceOn(v => !v)}
-            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all active:scale-90 shrink-0 ${voiceOn ? "bg-accent text-white" : "text-content-muted"}`}>
-            {voiceOn ? "🔊" : "🔇"}
-          </button>
           {!navigating && (
-            <>
-              <button onClick={clearChat}
-                className="whitespace-nowrap text-[10px] text-content-muted border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
-                ✕ Clear
-              </button>
-              <Link href="/map-it"
-                className="whitespace-nowrap flex items-center gap-1 text-[10px] text-content-secondary border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
-                📍 Map It
-              </Link>
-            </>
+            <button onClick={clearChat}
+              className="whitespace-nowrap text-[10px] text-content-muted border border-stroke bg-surface-card px-2.5 py-1.5 rounded-full active:scale-95 transition-all">
+              ✕ Clear
+            </button>
           )}
+          {/* Map toggle — lives in navbar */}
+          <button
+            onClick={() => setMapMini(v => !v)}
+            aria-label="Toggle map"
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 border ${mapMini ? "bg-surface-card border-stroke text-content-muted" : "bg-accent/10 border-accent/30 text-accent"}`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>
+          </button>
         </div>
       </header>
 
       {/* Map */}
       <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={mapMini} onToggleExpand={() => setMapExpanded(v => !v)} />
-
-      {/* Mini map thumbnail — snaps into top-right corner when map collapses */}
-      <button
-        onClick={() => { setMapMini(false); setShowMiniBtn(false); }}
-        aria-label="Expand map"
-        className="fixed z-40 w-16 h-16 rounded-2xl bg-surface-card border border-accent/30 shadow-xl flex flex-col items-center justify-center gap-1 active:scale-90"
-        style={{
-          top: '72px', left: '50%',
-          transform: showMiniBtn ? 'translateX(-50%) scale(1)' : 'translateX(-50%) scale(0)',
-          opacity: showMiniBtn ? 1 : 0,
-          transformOrigin: 'top center',
-          transition: showMiniBtn
-            ? 'transform 380ms cubic-bezier(0.34,1.56,0.64,1), opacity 200ms'
-            : 'transform 200ms ease-in, opacity 150ms',
-          pointerEvents: showMiniBtn ? 'auto' : 'none',
-        }}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
-          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-          <circle cx="12" cy="9" r="2.5" fill="currentColor" stroke="none"/>
-        </svg>
-        <span className="text-[9px] text-accent font-semibold tracking-wide">Map</span>
-      </button>
 
       {/* Chat sheet */}
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)] relative">
@@ -1409,28 +1477,11 @@ export default function HomePage() {
                   {msg.type === "stations" && msg.stationOptions && (
                     <StationsCard
                       options={msg.stationOptions}
+                      onTips={handleTips}
+                      onFindWay={(opt) => setFindWayStation({ name: opt.boardingStop.name, lat: opt.boardingStop.lat, lng: opt.boardingStop.lng })}
                       onSelect={(opt) => {
                         const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
-                        if (isIntercity) {
-                          const dest = lastSearchRef.current?.destination ?? "your destination";
-                          const busLeg = opt.legs[0];
-                          const hrs = Math.round(busLeg.durationMins / 60 * 10) / 10;
-                          const t = opt.trotroToTerminal;
-
-                          if (t && t.legs.length > 0) {
-                            const firstLeg = t.legs[0];
-                            botSay(
-                              { type: "text", text: `Right. Here's your plan for **${dest}**:` },
-                              { type: "text", text: `🚐 *Getting to the terminal:* ${firstLeg.whatToLookFor}${t.legs.length > 1 ? ` — change at ${t.legs.at(-1)?.from}` : ""}. About ${t.totalMins} min, ${fareRange(t.totalFare)}.` },
-                              { type: "text", text: `🚌 *At ${opt.boardingStop.name}:* ${busLeg.whatToLookFor} — ~${hrs} hr${hrs !== 1 ? "s" : ""}, ${fareRange(busLeg.fare)}.` },
-                            );
-                          } else {
-                            botSay(
-                              { type: "text", text: `You're close to **${opt.boardingStop.name}**. Here's what to do:` },
-                              { type: "text", text: busLeg.whatToLookFor },
-                            );
-                          }
-                        } else {
+                        if (!isIntercity) {
                           const dest = lastSearchRef.current?.destination;
                           if (dest) search(dest, opt.boardingStop.name);
                         }
@@ -1470,15 +1521,14 @@ export default function HomePage() {
         )}
 
         {/* Input bar */}
-        <div className="shrink-0 px-4 pb-safe pb-5 pt-3 flex gap-3 items-end border-t border-stroke">
-          <div className="flex-1 bg-surface-card border border-stroke rounded-2xl px-4 py-3 focus-within:border-accent transition-colors">
+        <div className="shrink-0 px-4 pb-safe pb-5 pt-3 border-t border-stroke">
+          <div className="bg-surface-card border border-stroke rounded-2xl px-4 pt-3 pb-2 focus-within:border-accent transition-colors">
             <textarea ref={inputRef} rows={1} value={input}
               onChange={(e) => {
                 const val = e.target.value;
                 setInput(val);
                 e.target.style.height = "auto";
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 110)}px`;
-                // Autocomplete
                 if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
                 if (val.trim().length >= 2) {
                   suggestTimerRef.current = setTimeout(async () => {
@@ -1496,37 +1546,65 @@ export default function HomePage() {
                 }
               }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
-              placeholder={
-                navigating      ? "Ask something or go somewhere else…" :
-                !userLoc && !knownOrigin ? "Where are you going? (or: I'm at [place])" :
-                "Where are you going?"
-              }
+              placeholder="Type your destination…"
               disabled={processing}
               className="w-full bg-transparent text-[13px] text-content-primary placeholder-content-placeholder outline-none resize-none leading-relaxed disabled:opacity-40" />
+
+            {/* Pills row + send/voice */}
+            <div className="flex items-center gap-2 mt-2">
+              {/* Location pill */}
+              <button
+                onMouseDown={(e) => { e.preventDefault(); if (userLoc) botSay({ type: "text", text: `📍 Using your GPS location.` }); else send("I'm at my current location"); }}
+                className="flex items-center gap-1 bg-surface-elevated border border-stroke rounded-full px-3 py-1 text-[11px] text-content-secondary active:opacity-70 transition-opacity shrink-0"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-accent">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                </svg>
+                {userLoc || knownOrigin ? "My location" : "Set location"}
+              </button>
+              {/* Contribute pill */}
+              <Link href="/map-it"
+                className="flex items-center gap-1 bg-surface-elevated border border-stroke rounded-full px-3 py-1 text-[11px] text-content-secondary active:opacity-70 transition-opacity shrink-0">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Contribute
+              </Link>
+              <div className="flex-1" />
+              {/* Voice */}
+              {hasSpeech && (
+                <button onClick={toggleVoiceInput}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0 ${
+                    listening ? "bg-red-500/20 text-red-400 animate-pulse border border-red-500/30" : "text-content-muted"
+                  }`}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </button>
+              )}
+              {/* Send */}
+              <button onClick={() => send(input)} disabled={!input.trim() || processing}
+                className="shrink-0 w-9 h-9 rounded-full bg-accent flex items-center justify-center text-white disabled:opacity-30 active:scale-90 transition-all">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+                </svg>
+              </button>
+            </div>
           </div>
-          {hasSpeech && (
-            <button onClick={toggleVoiceInput}
-              className={`shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-90 ${
-                listening ? "bg-red-500/20 text-red-400 animate-pulse border border-red-500/30" : "text-content-muted bg-surface-card border border-stroke"
-              }`}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="23"/>
-                <line x1="8" y1="23" x2="16" y2="23"/>
-              </svg>
-            </button>
-          )}
-          <button onClick={() => send(input)} disabled={!input.trim() || processing}
-            className="shrink-0 w-11 h-11 rounded-full bg-accent flex items-center justify-center text-white disabled:opacity-30 active:scale-90 transition-all">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
-            </svg>
-          </button>
         </div>
-      </div>
+      </div>{/* end chat sheet */}
 
       {reportingResult && <ReportModal result={reportingResult} onClose={() => setReportingResult(null)} />}
+      {findWayStation && (
+        <FindYourWayModal
+          station={findWayStation}
+          userLoc={userLoc}
+          onClose={() => setFindWayStation(null)}
+          onMapExpand={() => { setMapMini(false); setMapExpanded(true); }}
+        />
+      )}
 
       {/* PWA install banner */}
       {showInstall && installPrompt && (
