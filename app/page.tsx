@@ -345,11 +345,11 @@ function FindYourWayModal({ station, userLoc, onClose }: {
 
         {/* Ride apps */}
         <p className="text-content-disabled text-[9px] uppercase tracking-widest px-5 mb-2">Book a ride</p>
-        <div className="flex gap-2 px-5 mb-5">
+        <div className="flex gap-3 px-5 mb-5">
           {APPS.map(a => (
             <button key={a.id} onClick={() => openApp(a)}
-              className="rounded-xl overflow-hidden active:scale-95 transition-all border border-stroke"
-              style={{ width: 72, height: 36 }}>
+              className="flex-1 rounded-2xl overflow-hidden active:scale-95 transition-all border border-stroke"
+              style={{ height: 56 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`/images/${a.id}.png`} alt={a.label} className="w-full h-full object-cover" />
             </button>
