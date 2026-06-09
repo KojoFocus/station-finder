@@ -388,76 +388,136 @@ function FindYourWayModal({ station, userLoc, onClose }: {
 
 // ─── StationsCard ─────────────────────────────────────────────────────────────
 
-function StationsCard({ options, onSelect, onTips, onFindWay }: {
+const C = {
+  bg:       "#0a120a",
+  surface:  "#111911",
+  up:       "#172017",
+  border:   "#1f2e1f",
+  borderUp: "#2a3f2a",
+  green:    "#4a7c59",
+  greenDim: "#2d5040",
+  greenGlow:"#6aac7a",
+  hi:       "#e4f0e0",
+  mid:      "#9ab89a",
+  low:      "#506050",
+  gold:     "#c8a84b",
+} as const;
+
+function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
   options: StationOption[];
   onSelect: (opt: StationOption) => void;
-  onTips: (opt: StationOption) => void;
   onFindWay: (opt: StationOption) => void;
+  fetchTips: (opt: StationOption) => Promise<string[]>;
 }) {
-  const [idx, setIdx] = useState(0);
-  const opt  = options[idx];
+  const [idx,         setIdx]         = useState(0);
+  const [tips,        setTips]        = useState<string[] | null>(null);
+  const [tipsLoading, setTipsLoading] = useState(false);
+
+  const opt        = options[idx];
   const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
-  const busLeg = opt.legs[0];
-  const busHrs = busLeg ? Math.round(busLeg.durationMins / 60 * 10) / 10 : 0;
-  const isRec  = idx === 0;
-  const label  = isRec ? null : stationLabel(opt, options);
-  const insight = stationInsight(opt, idx, options);
-  const hasT   = isIntercity && opt.trotroToTerminal && opt.trotroToTerminal.legs.length > 0;
+  const busLeg     = opt.legs[0];
+  const busHrs     = busLeg ? Math.round(busLeg.durationMins / 60 * 10) / 10 : 0;
+  const isRec      = idx === 0;
+  const label      = isRec ? "Recommended" : stationLabel(opt, options).text;
+
+  const handleTips = async () => {
+    if (tips !== null) { setTips(null); return; }
+    setTipsLoading(true);
+    const result = await fetchTips(opt);
+    setTips(result);
+    setTipsLoading(false);
+  };
+
+  // reset tips when card changes
+  const handleNext = () => { setIdx(v => (v + 1) % options.length); setTips(null); };
 
   return (
-    <div className="rounded-2xl border border-stroke bg-surface-card w-full overflow-hidden">
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 24, overflow: "hidden", width: "100%" }}>
 
-      {/* Header row */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-0">
-        <span className={`text-[10px] font-bold uppercase tracking-widest ${isRec ? "text-accent" : "text-content-muted"}`}>
-          {isRec ? "★ Recommended" : label?.text}
-        </span>
+      {/* Gradient header */}
+      <div style={{ background: `linear-gradient(135deg, ${C.greenDim}, #1a3028)`, padding: "14px 18px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <svg width="12" height="12" viewBox="0 0 10 10">
+            <polygon points="5,1 6.5,3.8 9.5,4.2 7.3,6.3 7.9,9.3 5,7.7 2.1,9.3 2.7,6.3 0.5,4.2 3.5,3.8" fill={C.gold}/>
+          </svg>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: C.gold, textTransform: "uppercase" }}>
+            {label}
+          </span>
+        </div>
         {options.length > 1 && (
-          <div className="flex items-center gap-2">
-            <span className="text-content-disabled text-[10px]">{idx + 1} / {options.length}</span>
-            <button onClick={() => setIdx((idx + 1) % options.length)}
-              className="text-[10px] text-accent border border-accent/30 px-2.5 py-0.5 rounded-full active:opacity-70">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {options.map((_, i) => (
+                <div key={i} style={{ width: i === idx ? 16 : 6, height: 6, borderRadius: 3, background: i === idx ? C.greenGlow : C.borderUp, transition: "width 0.2s" }} />
+              ))}
+            </div>
+            <button onClick={handleNext} style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${C.borderUp}`, borderRadius: 12, color: C.mid, fontSize: 12, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>
               Next
             </button>
           </div>
         )}
       </div>
 
-      {/* Terminal name */}
-      <div className="px-4 pt-2.5 pb-1">
-        <p className="text-content-primary font-bold text-[22px] leading-tight">
-          Take {opt.boardingStop.name}
-        </p>
+      {/* Station name + subtitle */}
+      <div style={{ padding: "20px 20px 0" }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: C.hi, lineHeight: 1.15, letterSpacing: "-0.02em", marginBottom: 5 }}>
+          {opt.boardingStop.name}
+        </div>
+        <div style={{ fontSize: 13, color: C.low, marginBottom: 20 }}>
+          Intercity bus terminal · Accra
+        </div>
+
+        {/* Stats grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: C.border, borderRadius: 16, overflow: "hidden", marginBottom: tips !== null ? 16 : 20 }}>
+          {[
+            { label: "Fare",  value: `₵${Math.round(opt.totalFare)}` },
+            { label: "Time",  value: isIntercity ? `${busHrs} hr${busHrs !== 1 ? "s" : ""}` : `${opt.totalMins} min` },
+            { label: "Away",  value: formatDist(opt.boardingStop.distanceM) },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: C.up, padding: "14px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.hi, lineHeight: 1, marginBottom: 5 }}>{value}</div>
+              <div style={{ fontSize: 11, color: C.low, letterSpacing: "0.03em" }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tips panel — inline */}
+        {tipsLoading && (
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: C.mid, margin: 0 }}>Loading tips…</p>
+          </div>
+        )}
+        {tips && tips.length > 0 && (
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {tips.map((tip, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="7" cy="7" r="5.5" stroke={C.mid} strokeWidth="1.3"/>
+                  <line x1="7" y1="6" x2="7" y2="10" stroke={C.mid} strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="7" cy="4.2" r="0.8" fill={C.mid}/>
+                </svg>
+                <p style={{ fontSize: 13, color: C.mid, lineHeight: 1.55, margin: 0 }}>{tip}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Insight / context */}
-      <div className="px-4 pb-4">
-        <p className="text-content-secondary text-sm leading-relaxed">{insight}</p>
-      </div>
-
-      {/* Natural-language stats */}
-      <div className="px-4 pb-4 space-y-1.5 border-t border-stroke pt-3">
-        <p className="text-content-primary text-sm">About <span className="font-semibold">₵{Math.round(opt.totalFare)}</span> total</p>
-        <p className="text-content-primary text-sm">
-          About <span className="font-semibold">
-            {isIntercity ? `${busHrs} hour${busHrs !== 1 ? "s" : ""}` : `${opt.totalMins} min`}
-          </span> {isIntercity ? "journey" : "total"}
-        </p>
-        <p className="text-content-primary text-sm">About <span className="font-semibold">{formatDist(opt.boardingStop.distanceM)}</span> from you</p>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex gap-2 px-4 pb-4">
-        <button onClick={() => onTips(opt)}
-          className="flex-1 py-3 rounded-xl border border-stroke text-content-secondary text-sm font-semibold active:scale-95 transition-all flex items-center justify-center gap-1.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      {/* Action row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", borderTop: `1px solid ${C.border}` }}>
+        <button onClick={handleTips} style={{ background: "transparent", border: "none", borderRight: `1px solid ${C.border}`, color: tips ? C.greenGlow : C.mid, fontSize: 14, fontWeight: 500, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+          <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+            <line x1="7" y1="6" x2="7" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <circle cx="7" cy="4.2" r="0.8" fill="currentColor"/>
           </svg>
-          Tips
+          {tipsLoading ? "Loading…" : tips ? "Hide" : "Tips"}
         </button>
-        <button onClick={() => { onSelect(opt); onFindWay(opt); }}
-          className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-semibold active:scale-95 transition-all">
-          Find your way →
+        <button onClick={() => { onSelect(opt); onFindWay(opt); }} style={{ background: C.green, border: "none", color: C.hi, fontSize: 15, fontWeight: 700, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, letterSpacing: "0.01em" }}>
+          Find your way
+          <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
+            <path d="M2 7 H12 M8 3 L12 7 L8 11" stroke={C.hi} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -1139,28 +1199,20 @@ export default function HomePage() {
     botSay({ type: "text", text: "Stopped. Where next?" });
   }, [watchId, botSay]);
 
-  const handleTips = useCallback(async (opt: StationOption) => {
+  const fetchTipsForCard = useCallback(async (opt: StationOption): Promise<string[]> => {
     const dest = lastSearchRef.current?.destination ?? "your destination";
-    addMsg({ from: "bot", type: "typing" });
     try {
       const res = await fetch("/api/tips", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ terminal: opt.boardingStop.name, destination: dest }),
       });
-      removeTyping();
       if (res.ok) {
         const { tips } = await res.json() as { tips: string[] };
-        if (tips.length) {
-          for (const tip of tips) await botSay({ type: "text", text: tip });
-        } else {
-          await botSay({ type: "text", text: "No tips available right now — ask the station master when you arrive." });
-        }
+        return tips ?? [];
       }
-    } catch {
-      removeTyping();
-      await botSay({ type: "text", text: "Couldn't load tips — check your connection and try again." });
-    }
-  }, [addMsg, removeTyping, botSay]);
+    } catch { /* fall through */ }
+    return [];
+  }, []);
 
   // ── Voice input ────────────────────────────────────────────────────────────
   const toggleVoiceInput = useCallback(() => {
@@ -1480,7 +1532,7 @@ export default function HomePage() {
                   {msg.type === "stations" && msg.stationOptions && (
                     <StationsCard
                       options={msg.stationOptions}
-                      onTips={handleTips}
+                      fetchTips={fetchTipsForCard}
                       onFindWay={(opt) => setFindWayStation({ name: opt.boardingStop.name, lat: opt.boardingStop.lat, lng: opt.boardingStop.lng })}
                       onSelect={(opt) => {
                         const isIntercity = opt.legs[0]?.transitType === "Intercity Bus";
