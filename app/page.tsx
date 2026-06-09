@@ -285,29 +285,6 @@ function RouteCard({ result, fare }: { result: DirectionsResult; fare: number | 
 
 // ─── Station card helpers ──────────────────────────────────────────────────────
 
-function stationInsight(opt: StationOption, idx: number, all: StationOption[]): string {
-  const h = new Date().getHours();
-  const rush = (h >= 6 && h < 9) || (h >= 16 && h < 20);
-  if (all.length === 1) return rush ? "Good option right now — terminal loads fairly quickly at this hour." : "Straightforward route from your location.";
-
-  const byFare = [...all].sort((a, b) => a.totalFare - b.totalFare);
-  const byTime = [...all].sort((a, b) => a.totalMins - b.totalMins);
-  const cheapest = byFare[0].boardingStop.name === opt.boardingStop.name;
-  const fastest  = byTime[0].boardingStop.name === opt.boardingStop.name;
-
-  if (idx === 0) {
-    if (cheapest && fastest) return rush ? "Fastest and cheapest right now — solid pick during rush hour." : "Best value and quickest route from your location.";
-    if (cheapest) return "Most affordable option for this route.";
-    if (fastest)  return rush ? "Loads up fast — less waiting during rush hour." : "Gets you on the road quicker than the others.";
-    return "Best balance of cost and time for this route.";
-  }
-  const best = all[0];
-  const fd = opt.totalFare - best.totalFare;
-  const td = opt.totalMins - best.totalMins;
-  if (fd < -5) return `Saves about ₵${Math.abs(Math.round(fd))} compared to the top pick.`;
-  if (td < -15) return `About ${Math.abs(Math.round(td))} min faster than the top pick.`;
-  return "Alternative route — similar cost and time.";
-}
 
 function stationLabel(opt: StationOption, all: StationOption[]): { text: string; accent: boolean } {
   const byFare = [...all].sort((a, b) => a.totalFare - b.totalFare);
@@ -613,7 +590,7 @@ export default function HomePage() {
   const [result,          setResult]         = useState<DirectionsResult | null>(null);
   const [processing,      setProcessing]     = useState(false);
   const [navigating,      setNavigating]     = useState(false);
-  const [voiceOn,         setVoiceOn]        = useState(false);
+  const [voiceOn]                            = useState(false);
   const [watchId,         setWatchId]        = useState<number | null>(null);
   const [stepIdx,         setStepIdx]        = useState(0);
   const [pendingDest,     setPendingDest]    = useState<string | null>(null);
@@ -623,7 +600,6 @@ export default function HomePage() {
   const [hasSpeech,       setHasSpeech]      = useState(false);
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
   const [deviceId,        setDeviceId]       = useState<string>("");
-  const [mapMini,         setMapMini]        = useState(true);
   const [findWayStation,  setFindWayStation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{ destination: string; origin?: string } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1361,7 +1337,7 @@ export default function HomePage() {
             className="overflow-hidden rounded-xl active:scale-90 transition-all border border-accent/30"
             style={{ width: 58, height: 36 }}
           >
-            {mapMini && userLoc && process.env.NEXT_PUBLIC_MAPBOX_TOKEN ? (
+            {userLoc && process.env.NEXT_PUBLIC_MAPBOX_TOKEN ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={`https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/static/${userLoc.lng},${userLoc.lat},13/116x72@2x?access_token=${process.env.NEXT_PUBLIC_MAPBOX_TOKEN}&attribution=false&logo=false`}
@@ -1369,8 +1345,8 @@ export default function HomePage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className={`w-full h-full flex items-center justify-center ${mapMini ? "bg-surface-card" : "bg-accent/10"}`}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className={mapMini ? "text-content-muted" : "text-accent"}>
+              <div className="w-full h-full flex items-center justify-center bg-surface-card">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-content-muted">
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                 </svg>
               </div>
