@@ -389,17 +389,14 @@ function FindYourWayModal({ station, userLoc, onClose }: {
 // ─── StationsCard ─────────────────────────────────────────────────────────────
 
 const C = {
-  bg:       "#0a120a",
-  surface:  "#111911",
-  up:       "#172017",
-  border:   "#1f2e1f",
-  borderUp: "#2a3f2a",
-  green:    "#4a7c59",
-  greenDim: "#1e2e1e",
-  greenGlow:"#6aac7a",
-  hi:       "#e4f0e0",
-  mid:      "#9ab89a",
-  low:      "#506050",
+  bg:      "#0d0d0d",
+  surface: "#1a1a1a",
+  up:      "#222222",
+  border:  "#2a2a2a",
+  accent:  "#4a7c59",   // single green — CTA button only
+  hi:      "#f0f0f0",
+  mid:     "#888888",
+  low:     "#4a4a4a",
 } as const;
 
 function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
@@ -433,13 +430,13 @@ function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 24, overflow: "hidden", width: "100%" }}>
 
-      {/* Gradient header */}
-      <div style={{ background: C.greenDim, padding: "14px 18px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="12" height="12" viewBox="0 0 10 10">
-            <polygon points="5,1 6.5,3.8 9.5,4.2 7.3,6.3 7.9,9.3 5,7.7 2.1,9.3 2.7,6.3 0.5,4.2 3.5,3.8" fill={C.greenGlow}/>
+      {/* Header */}
+      <div style={{ background: C.up, padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="11" height="11" viewBox="0 0 10 10">
+            <polygon points="5,1 6.5,3.8 9.5,4.2 7.3,6.3 7.9,9.3 5,7.7 2.1,9.3 2.7,6.3 0.5,4.2 3.5,3.8" fill={C.accent}/>
           </svg>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: C.greenGlow, textTransform: "uppercase" }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: C.accent, textTransform: "uppercase" }}>
             {label}
           </span>
         </div>
@@ -447,10 +444,10 @@ function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ display: "flex", gap: 4 }}>
               {options.map((_, i) => (
-                <div key={i} style={{ width: i === idx ? 16 : 6, height: 6, borderRadius: 3, background: i === idx ? C.greenGlow : C.borderUp, transition: "width 0.2s" }} />
+                <div key={i} style={{ width: i === idx ? 16 : 6, height: 6, borderRadius: 3, background: i === idx ? C.accent : C.border, transition: "width 0.2s" }} />
               ))}
             </div>
-            <button onClick={handleNext} style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${C.borderUp}`, borderRadius: 12, color: C.mid, fontSize: 12, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>
+            <button onClick={handleNext} style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, borderRadius: 12, color: C.mid, fontSize: 12, padding: "4px 12px", cursor: "pointer", fontWeight: 500 }}>
               Next
             </button>
           </div>
@@ -504,7 +501,7 @@ function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
 
       {/* Action row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", borderTop: `1px solid ${C.border}` }}>
-        <button onClick={handleTips} style={{ background: "transparent", border: "none", borderRight: `1px solid ${C.border}`, color: tips ? C.greenGlow : C.mid, fontSize: 14, fontWeight: 500, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+        <button onClick={handleTips} style={{ background: "transparent", border: "none", borderRight: `1px solid ${C.border}`, color: tips ? C.hi : C.mid, fontSize: 14, fontWeight: 500, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
           <svg width="15" height="15" viewBox="0 0 14 14" fill="none">
             <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
             <line x1="7" y1="6" x2="7" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -512,7 +509,7 @@ function StationsCard({ options, onSelect, onFindWay, fetchTips }: {
           </svg>
           {tipsLoading ? "Loading…" : tips ? "Hide" : "Tips"}
         </button>
-        <button onClick={() => { onSelect(opt); onFindWay(opt); }} style={{ background: C.green, border: "none", color: C.hi, fontSize: 15, fontWeight: 700, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, letterSpacing: "0.01em" }}>
+        <button onClick={() => { onSelect(opt); onFindWay(opt); }} style={{ background: C.accent, border: "none", color: C.hi, fontSize: 15, fontWeight: 700, padding: "18px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, letterSpacing: "0.01em" }}>
           Find your way
           <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
             <path d="M2 7 H12 M8 3 L12 7 L8 11" stroke={C.hi} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
