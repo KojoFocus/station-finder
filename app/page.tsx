@@ -310,6 +310,19 @@ function stationLabel(opt: StationOption, all: StationOption[]): { text: string;
   return { text: "Alternative", accent: false };
 }
 
+// ─── Ride price estimator ─────────────────────────────────────────────────────
+
+function rideEstimates(distanceM: number) {
+  const km = Math.max(1, distanceM / 1000);
+  const h  = new Date().getHours();
+  const surge = ((h >= 6 && h < 9) || (h >= 16 && h < 20)) ? 1.25 : 1;
+  return {
+    uber:  { price: Math.round((8 + km * 3.2) * surge), wait: "5–10 min" },
+    bolt:  { price: Math.round((5 + km * 2.6) * surge), wait: "4–8 min"  },
+    yango: { price: Math.round((4 + km * 2.3) * surge), wait: "5–12 min" },
+  };
+}
+
 // ─── FindYourWayModal ─────────────────────────────────────────────────────────
 
 function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
@@ -318,30 +331,51 @@ function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
   onClose: () => void;
   onMapExpand: () => void;
 }) {
-  const APPS = [
-    { id: "uber",  label: "Uber",  icon: "U" },
-    { id: "bolt",  label: "Bolt",  icon: "B" },
-    { id: "yango", label: "Yango", icon: "Y" },
+  const { lat, lng, name } = station;
+  const est = rideEstimates(
+    userLoc ? Math.sqrt((lat - userLoc.lat) ** 2 + (lng - userLoc.lng) ** 2) * 111000 : 5000
+  );
+
+  const APPS: { id: "uber" | "bolt" | "yango"; label: string; bg: string; fg: string; logo: React.ReactNode }[] = [
+    {
+      id: "uber", label: "Uber", bg: "#000000", fg: "#ffffff",
+      logo: <span style={{ fontFamily: "sans-serif", fontWeight: 900, fontSize: 13, letterSpacing: "-0.5px", color: "#fff" }}>uber</span>,
+    },
+    {
+      id: "bolt", label: "Bolt", bg: "#34D186", fg: "#ffffff",
+      logo: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+          <path d="M13 2L4 14h7l-1 8 9-12h-7z"/>
+        </svg>
+      ),
+    },
+    {
+      id: "yango", label: "Yango", bg: "#FF6600", fg: "#ffffff",
+      logo: <span style={{ fontFamily: "sans-serif", fontWeight: 900, fontSize: 14, color: "#fff" }}>Y</span>,
+    },
   ];
 
-  const openRideApp = (app: string) => {
-    const { lat, lng, name } = station;
-    const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-    let deep = "";
-    if (app === "uber")  deep = `uber://?action=setPickup${userLoc ? `&pickup[latitude]=${userLoc.lat}&pickup[longitude]=${userLoc.lng}` : ""}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${encodeURIComponent(name)}`;
-    if (app === "bolt")  deep = `taxify://route?end_latitude=${lat}&end_longitude=${lng}`;
-    if (app === "yango") deep = `yango://open-app?action=yandex-maps-route&lat=${lat}&lon=${lng}`;
-    window.location.href = deep;
-    setTimeout(() => window.open(gmaps, "_blank"), 1500);
-    onClose();
-  };
+  const openApp = (app: "uber" | "bolt" | "yango") => {
+    const uLat = userLoc?.lat ?? "", uLng = userLoc?.lng ?? "";
+    const enc  = encodeURIComponent;
+    let deep   = "";
+    let web    = "";
 
-  const openGoogleMaps = () => {
-    const { lat, lng } = station;
-    const url = userLoc
-      ? `https://www.google.com/maps/dir/${userLoc.lat},${userLoc.lng}/${lat},${lng}`
-      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    window.open(url, "_blank");
+    if (app === "uber") {
+      deep = `uber://?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`;
+      web  = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`;
+    }
+    if (app === "bolt") {
+      deep = `taxify://route?pickup_latitude=${uLat}&pickup_longitude=${uLng}&end_latitude=${lat}&end_longitude=${lng}&end_address=${enc(name)}`;
+      web  = `https://bolt.eu/`;
+    }
+    if (app === "yango") {
+      deep = `yango://open-app?action=yandex-maps-route&lat=${lat}&lon=${lng}`;
+      web  = `https://yango.com/`;
+    }
+
+    window.location.href = deep;
+    setTimeout(() => window.open(web, "_blank"), 1500);
     onClose();
   };
 
@@ -349,38 +383,36 @@ function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
     <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={onClose}>
       <div className="w-full bg-raised rounded-t-3xl pb-10" onClick={e => e.stopPropagation()}>
         <div className="w-8 h-1 bg-stroke rounded-full mx-auto mt-3 mb-5" />
-        <p className="text-content-primary font-bold text-base px-5">Get to {station.name}</p>
-        <p className="text-content-muted text-xs px-5 mt-0.5 mb-5">Pick how you want to get there</p>
+        <p className="text-content-primary font-bold text-base px-5">Get to {name}</p>
+        <p className="text-content-muted text-xs px-5 mt-0.5 mb-5">Estimated prices — tap to open the app</p>
 
-        <div className="px-5 mb-4">
-          <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-3">Book a ride</p>
+        <div className="px-5 mb-5">
           <div className="flex gap-3">
             {APPS.map(a => (
-              <button key={a.id} onClick={() => openRideApp(a.id)}
-                className="flex-1 py-4 rounded-2xl bg-surface-card border border-stroke flex flex-col items-center gap-2 active:scale-95 transition-all">
-                <div className="w-9 h-9 rounded-full bg-surface-elevated flex items-center justify-center">
-                  <span className="text-content-primary font-black text-base">{a.icon}</span>
+              <button key={a.id} onClick={() => openApp(a.id)}
+                className="flex-1 rounded-2xl border border-stroke overflow-hidden active:scale-95 transition-all">
+                {/* Brand colour header */}
+                <div className="h-14 flex items-center justify-center" style={{ background: a.bg }}>
+                  {a.logo}
                 </div>
-                <span className="text-xs text-content-secondary font-medium">{a.label}</span>
+                {/* Price + wait */}
+                <div className="bg-surface-card py-2.5 px-2 text-center">
+                  <p className="text-content-primary font-bold text-sm">₵{est[a.id].price}</p>
+                  <p className="text-content-muted text-[10px]">{est[a.id].wait}</p>
+                </div>
               </button>
             ))}
           </div>
+          <p className="text-content-disabled text-[9px] text-center mt-2">Estimates only — actual prices may vary</p>
         </div>
 
-        <div className="px-5 space-y-3">
+        <div className="px-5">
           <button onClick={() => { onMapExpand(); onClose(); }}
             className="w-full py-3.5 rounded-2xl bg-surface-card border border-stroke text-content-primary font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
             </svg>
             Show on map
-          </button>
-          <button onClick={openGoogleMaps}
-            className="w-full py-3.5 rounded-2xl bg-accent text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
-            Walking directions
           </button>
         </div>
       </div>
@@ -439,7 +471,7 @@ function StationsCard({ options, onSelect, onTips, onFindWay }: {
 
       {/* Natural-language stats */}
       <div className="px-4 pb-4 space-y-1.5 border-t border-stroke pt-3">
-        <p className="text-content-primary text-sm">About <span className="font-semibold">{fareRange(opt.totalFare)}</span> total</p>
+        <p className="text-content-primary text-sm">About <span className="font-semibold">₵{Math.round(opt.totalFare)}</span> total</p>
         <p className="text-content-primary text-sm">
           About <span className="font-semibold">
             {isIntercity ? `${busHrs} hour${busHrs !== 1 ? "s" : ""}` : `${opt.totalMins} min`}
@@ -447,18 +479,6 @@ function StationsCard({ options, onSelect, onTips, onFindWay }: {
         </p>
         <p className="text-content-primary text-sm">About <span className="font-semibold">{formatDist(opt.boardingStop.distanceM)}</span> from you</p>
       </div>
-
-      {/* Trotro breakdown — shown when there's a trotro leg to get to the terminal */}
-      {hasT && (
-        <div className="mx-4 mb-3 bg-surface-elevated rounded-xl px-3 py-2.5">
-          <p className="text-content-disabled text-[9px] uppercase tracking-widest mb-1.5">🚐 Trotro to terminal</p>
-          {opt.trotroToTerminal!.legs.map((leg, i) => (
-            <p key={i} className="text-content-secondary text-[11px] leading-snug">
-              {leg.from} → {leg.to} · ~{leg.durationMins} min · {fareRange(leg.fare)}
-            </p>
-          ))}
-        </div>
-      )}
 
       {/* Action buttons */}
       <div className="flex gap-2 px-4 pb-4">
@@ -786,41 +806,27 @@ export default function HomePage() {
       return;
     }
 
-    const EXAMPLE_CHIPS = [
-      { label: "Madina", action: "dest:Madina" },
-      { label: "Circle", action: "dest:Circle" },
-      { label: "Kaneshie", action: "dest:Kaneshie" },
-      { label: "Legon", action: "dest:Legon" },
-    ];
-
     const askManually = () => {
       removeTyping();
-      botSay(
-        { type: "text", text: "Where are you going? I'll find the best station." },
-        { type: "chips", chips: EXAMPLE_CHIPS },
-      );
+      botSay({ type: "text", text: "Where are you going? I'll find the best station." });
     };
 
     const onGpsDenied = () => {
       removeTyping();
       botSay(
-        { type: "text", text: "Location's off — no problem. Where are you coming from?" },
+        { type: "text", text: "Location's off — where are you coming from?" },
         { type: "chips", chips: [{ label: "Try location again", action: "retry_gps" }] },
       );
     };
 
     if (!navigator.geolocation) { askManually(); return; }
 
-    // Show typing dots while GPS resolves — more natural than a status text
     addMsg({ from: "bot", type: "typing" });
     navigator.geolocation.getCurrentPosition(
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         removeTyping();
-        botSay(
-          { type: "text", text: "Where are you going? I'll find the best station." },
-          { type: "chips", chips: EXAMPLE_CHIPS },
-        );
+        botSay({ type: "text", text: "Where are you going? I'll find the best station." });
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }
@@ -835,7 +841,7 @@ export default function HomePage() {
   const search = useCallback(async (destination: string, fromAddress?: string, coords?: { lat: number; lng: number }) => {
     lastSearchRef.current = { destination, fromAddress, coords };
     setProcessing(true);
-    setSearchStatus("Checking trotro routes…");
+    setSearchStatus("Looking up stations…");
     if (searchStatusTimerRef.current) clearTimeout(searchStatusTimerRef.current);
     searchStatusTimerRef.current = setTimeout(() => setSearchStatus("Almost there…"), 3000);
     setTimeout(() => addMsg({ from: "bot", type: "typing" }), 200);
@@ -1026,6 +1032,12 @@ export default function HomePage() {
 
     // If we're waiting for the user to supply their origin
     if (pendingDest) {
+      if (pendingDest === "__ask_origin__") {
+        setPendingDest(null);
+        setKnownOrigin(t);
+        await botSay({ type: "text", text: `Got it — searching from **${t}**. Where are they going?` });
+        return;
+      }
       setPendingDest(null);
       await search(pendingDest, t);
       return;
@@ -1292,15 +1304,27 @@ export default function HomePage() {
               ✕ Clear
             </button>
           )}
-          {/* Map toggle — lives in navbar */}
+          {/* Map toggle — shows live Mapbox static thumbnail when mini */}
           <button
             onClick={() => setMapMini(v => !v)}
             aria-label="Toggle map"
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 border ${mapMini ? "bg-surface-card border-stroke text-content-muted" : "bg-accent/10 border-accent/30 text-accent"}`}
+            className="overflow-hidden rounded-xl active:scale-90 transition-all border border-accent/30"
+            style={{ width: 58, height: 36 }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
+            {mapMini && userLoc && process.env.NEXT_PUBLIC_MAPBOX_TOKEN ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/static/${userLoc.lng},${userLoc.lat},13/116x72@2x?access_token=${process.env.NEXT_PUBLIC_MAPBOX_TOKEN}&attribution=false&logo=false`}
+                alt="Map"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className={`w-full h-full flex items-center justify-center ${mapMini ? "bg-surface-card" : "bg-accent/10"}`}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className={mapMini ? "text-content-muted" : "text-accent"}>
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+              </div>
+            )}
           </button>
         </div>
       </header>
@@ -1554,14 +1578,34 @@ export default function HomePage() {
             <div className="flex items-center gap-2 mt-2">
               {/* Location pill */}
               <button
-                onMouseDown={(e) => { e.preventDefault(); if (userLoc) botSay({ type: "text", text: `📍 Using your GPS location.` }); else send("I'm at my current location"); }}
-                className="flex items-center gap-1 bg-surface-elevated border border-stroke rounded-full px-3 py-1 text-[11px] text-content-secondary active:opacity-70 transition-opacity shrink-0"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (userLoc) return; // already have GPS, nothing to do
+                  navigator.geolocation?.getCurrentPosition(
+                    (p) => setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                    () => botSay({ type: "text", text: "Location's off — just type where you are." }),
+                    { timeout: 8000, enableHighAccuracy: true }
+                  );
+                }}
+                className={`flex items-center gap-1.5 border rounded-full px-3 py-1 text-[11px] shrink-0 active:opacity-70 transition-opacity ${userLoc ? "bg-accent/10 border-accent/30 text-accent" : "bg-surface-elevated border-stroke text-content-secondary"}`}
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-accent">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
                 </svg>
-                {userLoc || knownOrigin ? "My location" : "Set location"}
+                {userLoc ? "Location set" : knownOrigin ? knownOrigin.split(" ")[0] : "My location"}
               </button>
+              {/* For someone else */}
+              {!userLoc && (
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); setPendingDest("__ask_origin__"); botSay({ type: "text", text: "Whose location are you searching from?" }); }}
+                  className="flex items-center gap-1 bg-surface-elevated border border-stroke rounded-full px-3 py-1 text-[11px] text-content-secondary active:opacity-70 transition-opacity shrink-0"
+                >
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  </svg>
+                  Someone else
+                </button>
+              )}
               {/* Contribute pill */}
               <Link href="/map-it"
                 className="flex items-center gap-1 bg-surface-elevated border border-stroke rounded-full px-3 py-1 text-[11px] text-content-secondary active:opacity-70 transition-opacity shrink-0">
