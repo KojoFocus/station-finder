@@ -622,7 +622,7 @@ export default function HomePage() {
   const [hasSpeech,       setHasSpeech]      = useState(false);
   const [reportingResult, setReportingResult]= useState<DirectionsResult | null>(null);
   const [deviceId,        setDeviceId]       = useState<string>("");
-  const [mapMini,         setMapMini]        = useState(false);
+  const [mapMini,         setMapMini]        = useState(true);
   const [findWayStation,  setFindWayStation] = useState<{ name: string; lat: number; lng: number } | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{ destination: string; origin?: string } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -662,12 +662,8 @@ export default function HomePage() {
   useEffect(() => { langRef.current    = lang;    }, [lang]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
-  // Auto-collapse map 3 seconds after app opens
-  useEffect(() => {
-    const t = setTimeout(() => setMapMini(true), 3000);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Expand map when a route result arrives
+  useEffect(() => { if (result) setMapMini(false); }, [result]);
 
   // Re-expand map when navigating starts
   useEffect(() => {
@@ -1085,12 +1081,22 @@ export default function HomePage() {
       return;
     }
 
-    // ── Gemini intent extraction (2.5 s timeout → regex fallback) ──────────
     const msgHistory = msgs
       .filter((m) => m.type === "text" && m.text)
       .slice(-8)
       .map((m) => ({ role: m.from === "user" ? "user" : "assistant", text: m.text! }));
 
+    // ── Fast path: looks like a general question — skip intent, answer directly ──
+    if (looksLikeQuestion(t)) {
+      const data = await fetch("/api/converse", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: t, history: msgHistory }),
+      }).then(r => r.ok ? r.json() as Promise<{ reply: string | null }> : null).catch(() => null);
+      await botSay({ type: "text", text: data?.reply ?? "I know Ghana transport well — where are you headed? I'll find the best route for you." });
+      return;
+    }
+
+    // ── Gemini intent extraction (2.5 s timeout → regex fallback) ──────────
     const gemini = await Promise.race([
       fetch("/api/chat", {
         method: "POST",
@@ -1126,15 +1132,23 @@ export default function HomePage() {
       return;
     }
 
-    // Non-travel intent — answer the question, then stay available
+    // Non-travel intent — Gemini classified it as other and may have a reply
     if (gemini?.intent === "other" && !destination) {
-      await botSay({ type: "text", text: gemini.conversationalReply ?? "I'm your Ghana transit companion — where are you headed? I'll find the best station and route for you." });
+      if (gemini.conversationalReply) {
+        await botSay({ type: "text", text: gemini.conversationalReply });
+      } else {
+        const data = await fetch("/api/converse", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: t, history: msgHistory }),
+        }).then(r => r.ok ? r.json() as Promise<{ reply: string | null }> : null).catch(() => null);
+        await botSay({ type: "text", text: data?.reply ?? "I know Ghana transport well — where are you headed?" });
+      }
       return;
     }
 
-    // No destination detected (question / greeting that slipped past Gemini timeout)
+    // No destination detected
     if (!destination) {
-      await botSay({ type: "text", text: "I'm your Ghana transit companion — where are you headed? I'll find the best station and route for you." });
+      await botSay({ type: "text", text: "Where are you headed? I'll find the best station and route for you." });
       return;
     }
 
@@ -1342,8 +1356,8 @@ export default function HomePage() {
               ✕ Clear
             </button>
           )}
-          {/* Map toggle — always visible; tapping expands full-screen */}
-          <button
+          {/* Map toggle — only visible when a route is active */}
+          {(result || navigating) && <button
             onClick={() => { setMapMini(false); setMapExpanded(true); }}
             aria-label="Open map"
             className="overflow-hidden rounded-xl active:scale-90 transition-all border border-accent/30"
@@ -1363,12 +1377,12 @@ export default function HomePage() {
                 </svg>
               </div>
             )}
-          </button>
+          </button>}
         </div>
       </header>
 
-      {/* Map */}
-      <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={mapMini} onToggleExpand={() => setMapExpanded(v => !v)} />
+      {/* Map — only rendered when a route is active */}
+      {(result || navigating) && <MapPane result={result} userLoc={userLoc} navigating={navigating} height={mapH} expanded={mapExpanded} mini={mapMini} onToggleExpand={() => setMapExpanded(v => !v)} />}
 
       {/* Chat sheet */}
       <div className="flex-1 flex flex-col rounded-t-3xl bg-raised mt-2 overflow-hidden shadow-[0_-4px_20px_rgba(0,0,0,.35)] relative">
