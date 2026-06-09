@@ -1267,7 +1267,7 @@ export default function HomePage() {
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-sm shrink-0">🚐</div>
           <p className="text-content-primary text-sm font-semibold leading-none">
-            Station Finder <span className="text-[10px] text-content-muted font-normal">{navigating ? "● Navigating" : "● Accra Pilot"}</span>
+            Station Finder {navigating && <span className="text-[10px] text-content-muted font-normal">● Navigating</span>}
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
