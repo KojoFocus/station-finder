@@ -310,72 +310,38 @@ function stationLabel(opt: StationOption, all: StationOption[]): { text: string;
   return { text: "Alternative", accent: false };
 }
 
-// ─── Ride price estimator ─────────────────────────────────────────────────────
-
-function rideEstimates(distanceM: number) {
-  const km = Math.max(1, distanceM / 1000);
-  const h  = new Date().getHours();
-  const surge = ((h >= 6 && h < 9) || (h >= 16 && h < 20)) ? 1.25 : 1;
-  return {
-    uber:  { price: Math.round((8 + km * 3.2) * surge), wait: "5–10 min" },
-    bolt:  { price: Math.round((5 + km * 2.6) * surge), wait: "4–8 min"  },
-    yango: { price: Math.round((4 + km * 2.3) * surge), wait: "5–12 min" },
-  };
-}
-
 // ─── FindYourWayModal ─────────────────────────────────────────────────────────
 
-function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
+function FindYourWayModal({ station, userLoc, onClose }: {
   station: { name: string; lat: number; lng: number };
   userLoc: { lat: number; lng: number } | null;
   onClose: () => void;
-  onMapExpand: () => void;
 }) {
   const { lat, lng, name } = station;
-  const est = rideEstimates(
-    userLoc ? Math.sqrt((lat - userLoc.lat) ** 2 + (lng - userLoc.lng) ** 2) * 111000 : 5000
-  );
+  const enc = encodeURIComponent;
+  const uLat = userLoc?.lat ?? "", uLng = userLoc?.lng ?? "";
 
-  const APPS: { id: "uber" | "bolt" | "yango"; label: string; bg: string; fg: string; logo: React.ReactNode }[] = [
+  const APPS: { id: string; label: string; deep: string; web: string }[] = [
     {
-      id: "uber", label: "Uber", bg: "#000000", fg: "#ffffff",
-      logo: <span style={{ fontFamily: "sans-serif", fontWeight: 900, fontSize: 13, letterSpacing: "-0.5px", color: "#fff" }}>uber</span>,
+      id: "uber", label: "Uber",
+      deep: `uber://?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`,
+      web:  `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`,
     },
     {
-      id: "bolt", label: "Bolt", bg: "#34D186", fg: "#ffffff",
-      logo: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
-          <path d="M13 2L4 14h7l-1 8 9-12h-7z"/>
-        </svg>
-      ),
+      id: "bolt", label: "Bolt",
+      deep: `taxify://route?pickup_latitude=${uLat}&pickup_longitude=${uLng}&end_latitude=${lat}&end_longitude=${lng}&end_address=${enc(name)}`,
+      web:  `https://bolt.eu/`,
     },
     {
-      id: "yango", label: "Yango", bg: "#FF6600", fg: "#ffffff",
-      logo: <span style={{ fontFamily: "sans-serif", fontWeight: 900, fontSize: 14, color: "#fff" }}>Y</span>,
+      id: "yango", label: "Yango",
+      deep: `yango://open-app?action=yandex-maps-route&lat=${lat}&lon=${lng}`,
+      web:  `https://yango.com/`,
     },
   ];
 
-  const openApp = (app: "uber" | "bolt" | "yango") => {
-    const uLat = userLoc?.lat ?? "", uLng = userLoc?.lng ?? "";
-    const enc  = encodeURIComponent;
-    let deep   = "";
-    let web    = "";
-
-    if (app === "uber") {
-      deep = `uber://?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`;
-      web  = `https://m.uber.com/ul/?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`;
-    }
-    if (app === "bolt") {
-      deep = `taxify://route?pickup_latitude=${uLat}&pickup_longitude=${uLng}&end_latitude=${lat}&end_longitude=${lng}&end_address=${enc(name)}`;
-      web  = `https://bolt.eu/`;
-    }
-    if (app === "yango") {
-      deep = `yango://open-app?action=yandex-maps-route&lat=${lat}&lon=${lng}`;
-      web  = `https://yango.com/`;
-    }
-
-    window.location.href = deep;
-    setTimeout(() => window.open(web, "_blank"), 1500);
+  const open = (app: typeof APPS[number]) => {
+    window.location.href = app.deep;
+    setTimeout(() => window.open(app.web, "_blank"), 1500);
     onClose();
   };
 
@@ -383,37 +349,15 @@ function FindYourWayModal({ station, userLoc, onClose, onMapExpand }: {
     <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={onClose}>
       <div className="w-full bg-raised rounded-t-3xl pb-10" onClick={e => e.stopPropagation()}>
         <div className="w-8 h-1 bg-stroke rounded-full mx-auto mt-3 mb-5" />
-        <p className="text-content-primary font-bold text-base px-5">Get to {name}</p>
-        <p className="text-content-muted text-xs px-5 mt-0.5 mb-5">Estimated prices — tap to open the app</p>
-
-        <div className="px-5 mb-5">
-          <div className="flex gap-3">
-            {APPS.map(a => (
-              <button key={a.id} onClick={() => openApp(a.id)}
-                className="flex-1 rounded-2xl border border-stroke overflow-hidden active:scale-95 transition-all">
-                {/* Brand colour header */}
-                <div className="h-14 flex items-center justify-center" style={{ background: a.bg }}>
-                  {a.logo}
-                </div>
-                {/* Price + wait */}
-                <div className="bg-surface-card py-2.5 px-2 text-center">
-                  <p className="text-content-primary font-bold text-sm">₵{est[a.id].price}</p>
-                  <p className="text-content-muted text-[10px]">{est[a.id].wait}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-          <p className="text-content-disabled text-[9px] text-center mt-2">Estimates only — actual prices may vary</p>
-        </div>
-
-        <div className="px-5">
-          <button onClick={() => { onMapExpand(); onClose(); }}
-            className="w-full py-3.5 rounded-2xl bg-surface-card border border-stroke text-content-primary font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
-            </svg>
-            Show on map
-          </button>
+        <p className="text-content-primary font-bold text-base px-5 mb-1">Get to {name}</p>
+        <p className="text-content-muted text-xs px-5 mb-5">Opens the app with your location and destination filled in</p>
+        <div className="flex gap-3 px-5">
+          {APPS.map(a => (
+            <button key={a.id} onClick={() => open(a)}
+              className="flex-1 py-5 rounded-2xl bg-surface-card border border-stroke flex flex-col items-center gap-2 active:scale-95 transition-all">
+              <span className="text-content-primary font-bold text-base">{a.label}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -1646,7 +1590,6 @@ export default function HomePage() {
           station={findWayStation}
           userLoc={userLoc}
           onClose={() => setFindWayStation(null)}
-          onMapExpand={() => { setMapMini(false); setMapExpanded(true); }}
         />
       )}
 
