@@ -318,10 +318,10 @@ function FindYourWayModal({ station, userLoc, onClose }: {
   onClose: () => void;
 }) {
   const { lat, lng, name } = station;
-  const enc = encodeURIComponent;
+  const enc  = encodeURIComponent;
   const uLat = userLoc?.lat ?? "", uLng = userLoc?.lng ?? "";
 
-  const APPS: { id: string; label: string; deep: string; web: string }[] = [
+  const APPS = [
     {
       id: "uber", label: "Uber",
       deep: `uber://?action=setPickup&pickup[latitude]=${uLat}&pickup[longitude]=${uLng}&dropoff[latitude]=${lat}&dropoff[longitude]=${lng}&dropoff[nickname]=${enc(name)}`,
@@ -339,9 +339,17 @@ function FindYourWayModal({ station, userLoc, onClose }: {
     },
   ];
 
-  const open = (app: typeof APPS[number]) => {
+  const openApp = (app: typeof APPS[number]) => {
     window.location.href = app.deep;
     setTimeout(() => window.open(app.web, "_blank"), 1500);
+    onClose();
+  };
+
+  const openMaps = () => {
+    const url = userLoc
+      ? `https://www.google.com/maps/dir/${userLoc.lat},${userLoc.lng}/${lat},${lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(url, "_blank");
     onClose();
   };
 
@@ -349,15 +357,29 @@ function FindYourWayModal({ station, userLoc, onClose }: {
     <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={onClose}>
       <div className="w-full bg-raised rounded-t-3xl pb-10" onClick={e => e.stopPropagation()}>
         <div className="w-8 h-1 bg-stroke rounded-full mx-auto mt-3 mb-5" />
-        <p className="text-content-primary font-bold text-base px-5 mb-1">Get to {name}</p>
-        <p className="text-content-muted text-xs px-5 mb-5">Opens the app with your location and destination filled in</p>
-        <div className="flex gap-3 px-5">
+        <p className="text-content-primary font-bold text-base px-5 mb-5">Get to {name}</p>
+
+        {/* Ride apps */}
+        <p className="text-content-disabled text-[9px] uppercase tracking-widest px-5 mb-2">Book a ride</p>
+        <div className="flex gap-3 px-5 mb-5">
           {APPS.map(a => (
-            <button key={a.id} onClick={() => open(a)}
-              className="flex-1 py-5 rounded-2xl bg-surface-card border border-stroke flex flex-col items-center gap-2 active:scale-95 transition-all">
-              <span className="text-content-primary font-bold text-base">{a.label}</span>
+            <button key={a.id} onClick={() => openApp(a)}
+              className="flex-1 py-4 rounded-2xl bg-surface-card border border-stroke text-content-primary font-semibold text-sm active:scale-95 transition-all">
+              {a.label}
             </button>
           ))}
+        </div>
+
+        {/* Map directions */}
+        <div className="px-5">
+          <button onClick={openMaps}
+            className="w-full py-3.5 rounded-2xl bg-accent text-white font-semibold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+              <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+            </svg>
+            Directions on Google Maps
+          </button>
         </div>
       </div>
     </div>
@@ -750,9 +772,19 @@ export default function HomePage() {
       return;
     }
 
+    const DESTINATION_CHIPS = [
+      { label: "Ho",         action: "dest:Ho" },
+      { label: "Kumasi",     action: "dest:Kumasi" },
+      { label: "Cape Coast", action: "dest:Cape Coast" },
+      { label: "Tamale",     action: "dest:Tamale" },
+    ];
+
     const askManually = () => {
       removeTyping();
-      botSay({ type: "text", text: "Where are you going? I'll find the best station." });
+      botSay(
+        { type: "text", text: "Where are you going? I'll find the best station." },
+        { type: "chips", chips: DESTINATION_CHIPS },
+      );
     };
 
     const onGpsDenied = () => {
@@ -770,7 +802,10 @@ export default function HomePage() {
       (p) => {
         setUserLoc({ lat: p.coords.latitude, lng: p.coords.longitude });
         removeTyping();
-        botSay({ type: "text", text: "Where are you going? I'll find the best station." });
+        botSay(
+          { type: "text", text: "Where are you going? I'll find the best station." },
+          { type: "chips", chips: DESTINATION_CHIPS },
+        );
       },
       (err) => {
         if (err.code === 1) { onGpsDenied(); }
