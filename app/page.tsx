@@ -1283,10 +1283,10 @@ export default function HomePage() {
               ✕ Clear
             </button>
           )}
-          {/* Map toggle — shows live Mapbox static thumbnail when mini */}
+          {/* Map toggle — always visible; tapping expands full-screen */}
           <button
-            onClick={() => setMapMini(v => !v)}
-            aria-label="Toggle map"
+            onClick={() => { setMapMini(false); setMapExpanded(true); }}
+            aria-label="Open map"
             className="overflow-hidden rounded-xl active:scale-90 transition-all border border-accent/30"
             style={{ width: 58, height: 36 }}
           >
