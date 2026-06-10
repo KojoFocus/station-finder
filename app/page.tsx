@@ -349,7 +349,7 @@ function FindYourWayModal({ station, userLoc, onClose }: {
           {APPS.map(a => (
             <button key={a.id} onClick={() => openApp(a)}
               className="flex-1 rounded-2xl overflow-hidden active:scale-95 transition-all border border-stroke"
-              style={{ height: 56 }}>
+              style={{ height: 53 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`/images/${a.id}.png`} alt={a.label} className="w-full h-full object-cover" />
             </button>
